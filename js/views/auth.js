@@ -72,23 +72,14 @@ on('click', 'forgotPassword', async () => {
 
 // ---------- first-time setup ----------
 
-// Resolves with 'upload' | 'empty' | 'demo'.
-export function askSetup(local) {
+// Resolves with 'empty' | 'demo'.
+export function askSetup() {
   return new Promise((resolve) => {
-    const has = local && (local.clients.length || local.sessions.length);
     app.modal(
       `<div class="modal-head"><h2>Set up your account</h2></div>
-       <p class="muted small">Your account is new. How do you want to start? You can change your mind later in Settings.</p>
+       <p class="muted small">Your account is new. How do you want to start? You can change this later in Settings.</p>
        <div class="setup-options">
-         ${
-           has
-             ? `<button type="button" class="setup-opt primary" data-act="setupChoice" data-v="upload">
-                 <strong>Upload the data on this device</strong>
-                 <span>${local.clients.length} clients, ${local.sessions.length} sessions, ${local.exercises.length} exercises</span>
-               </button>`
-             : ''
-         }
-         <button type="button" class="setup-opt" data-act="setupChoice" data-v="empty">
+         <button type="button" class="setup-opt primary" data-act="setupChoice" data-v="empty">
            <strong>Start empty</strong><span>Just the exercise library — add your own clients</span>
          </button>
          <button type="button" class="setup-opt" data-act="setupChoice" data-v="demo">

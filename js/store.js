@@ -293,11 +293,14 @@ function persist(d) {
   }
 }
 
-// Data saved on this device before accounts existed (offered for upload at first sign-in).
-export const localOnlyData = () => readCache(KEY);
-
 // Signed in: start from this account's cached copy; the first snapshot from Firestore replaces it.
 export function startSync(uid, push) {
+  // Data saved in this browser before accounts existed was demo data; drop it.
+  try {
+    localStorage.removeItem(KEY);
+  } catch (e) {
+    /* ignore */
+  }
   cacheKey = 'regfit.cloud.' + uid;
   pushFn = push;
   db = readCache(cacheKey) || emptyData();

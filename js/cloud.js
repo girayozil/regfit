@@ -70,13 +70,15 @@ export function authMessage(err) {
 const colRef = (uid, name) => fb.F.collection(fb.fs, 'users', uid, name);
 const docRef = (uid, name, id) => fb.F.doc(fb.fs, 'users', uid, name, id);
 
-// Has this account been set up yet? Asks the server; null when offline.
+// Has this account been set up yet? Asks the server: true / false, null when offline,
+// 'denied' when the database rules refuse access.
 export async function accountExists(uid) {
   try {
     const snap = await fb.F.getDocFromServer(fb.F.doc(fb.fs, 'users', uid));
     return snap.exists();
   } catch (e) {
-    return null;
+    console.error(e);
+    return e && e.code === 'permission-denied' ? 'denied' : null;
   }
 }
 
@@ -86,7 +88,7 @@ export async function markAccount(uid) {
 
 // Live updates for all three collections. cb(name, changes, isFirst) where
 // changes = [{ type: 'set' | 'removed', id, data }].
-export function subscribe(uid, cb) {
+export function subscribe(uid, cb, onError) {
   const unsubs = COLLECTIONS.map((name) => {
     let first = true;
     return fb.F.onSnapshot(colRef(uid, name), (snap) => {
@@ -95,7 +97,7 @@ export function subscribe(uid, cb) {
         : snap.docChanges().map((c) => ({ type: c.type === 'removed' ? 'removed' : 'set', id: c.doc.id, data: c.doc.data() }));
       cb(name, changes, first);
       first = false;
-    });
+    }, onError);
   });
   return () => unsubs.forEach((u) => u());
 }

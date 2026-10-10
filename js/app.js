@@ -1,7 +1,7 @@
 // App shell: sign-in gate, hash router, event delegation, toast + modal, cloud sync, service worker.
 
 import { app, handlers, icon, isWide, todayISO } from './util.js';
-import { sessionsOn, startSync, stopSync, applyRemote, flush, markAllUnsynced, replaceData, localOnlyData, demoData, emptyData, db } from './store.js';
+import { sessionsOn, startSync, stopSync, applyRemote, flush, markAllUnsynced, replaceData, demoData, emptyData, db } from './store.js';
 import * as auth from './views/auth.js';
 import * as today from './views/today.js';
 import * as clients from './views/clients.js';
@@ -164,6 +164,7 @@ const updateSyncUI = () => {
   if (el) el.textContent = syncLabel();
 };
 function syncLabel() {
+  if (devMode) return 'Local test mode — data stays in this browser and isn’t synced';
   if (!navigator.onLine) return sync.pending ? 'Offline — changes are saved here and will sync when you’re back online' : 'Offline — showing the copy saved on this device';
   return sync.pending ? 'Syncing…' : 'All changes synced';
 }
@@ -208,11 +209,13 @@ async function signedIn(user) {
   render();
 
   const exists = await app.cloud.accountExists(user.uid);
+  if (exists === 'denied') {
+    showDenied();
+    return;
+  }
   if (exists === false) {
-    const choice = await auth.askSetup(localOnlyData());
-    if (choice === 'upload') replaceData(localOnlyData());
-    else if (choice === 'demo') replaceData(demoData());
-    else replaceData(emptyData());
+    const choice = await auth.askSetup();
+    replaceData(choice === 'demo' ? demoData() : emptyData());
     markAllUnsynced();
     app.toast('Setting up your account…');
     await flush();
@@ -222,12 +225,36 @@ async function signedIn(user) {
   } else if (exists === null && !db.clients.length && !db.sessions.length) {
     app.toast('Offline — connect to the internet to load your data');
   }
-  sync.unsubscribe = app.cloud.subscribe(user.uid, (name, changes, first) => {
-    if (applyRemote(name, changes, first)) renderSoon();
-  });
+  sync.unsubscribe = app.cloud.subscribe(
+    user.uid,
+    (name, changes, first) => {
+      if (applyRemote(name, changes, first)) renderSoon();
+    },
+    (err) => {
+      console.error(err);
+      if (err && err.code === 'permission-denied') showDenied();
+    }
+  );
 }
 
+// Signed in, but the database rules refuse access to this account's data.
+function showDenied() {
+  if (sync.unsubscribe) sync.unsubscribe();
+  viewEl.innerHTML = `<div class="auth-wrap"><div class="auth-card">
+    <h1 class="page-title">Can’t open your data</h1>
+    <p class="muted">You’re signed in, but the database refused access. In the Firebase console, check <strong>Firestore Database → Rules</strong> match the RegFit rules and are published.</p>
+    <button type="button" class="btn btn-dark wide" onclick="location.reload()">Try again</button>
+    <button type="button" class="btn btn-ghost wide" data-act="signOut">Sign out</button>
+  </div></div>`;
+  document.body.classList.add('signed-out');
+}
+handlers.click.signOut = handlers.click.signOut || (() => app.signOut());
+
 app.signOut = async () => {
+  if (devMode) {
+    location.href = location.pathname + '#/today';
+    return;
+  }
   await flush();
   if (sync.pending && !confirm('Some changes haven’t reached your account yet (no connection?). Sign out anyway and lose them?')) return;
   if (sync.unsubscribe) sync.unsubscribe();
@@ -252,9 +279,21 @@ window.addEventListener('offline', () => {
 });
 document.body.classList.toggle('is-offline', !navigator.onLine);
 
+// Local test mode: on localhost only, "?dev" skips sign-in and keeps demo data in this browser,
+// so the app can be developed and tested without a real account. Never active on the live site.
+const devMode = ['localhost', '127.0.0.1'].includes(location.hostname) && new URLSearchParams(location.search).has('dev');
+
 async function boot() {
   lastPath = currentPath();
   render();
+  if (devMode) {
+    app.account = { email: 'Local test mode', uid: 'dev' };
+    startSync('dev', null);
+    if (!db.clients.length && !db.sessions.length) replaceData(demoData());
+    authState = 'in';
+    render();
+    return;
+  }
   try {
     app.cloud = await import('./cloud.js');
     await app.cloud.init();
