@@ -126,10 +126,11 @@ const modalRoot = document.getElementById('modal-root');
 let lastFocus = null;
 let modalLocked = false;
 // locked: no closing by backdrop tap or Escape (the dialog must be answered).
-app.modal = (html, label, locked = false) => {
+// variant: extra class on the backdrop, e.g. 'sheet-top' (pinned to the top on phones).
+app.modal = (html, label, locked = false, variant = '') => {
   lastFocus = document.activeElement;
   modalLocked = locked;
-  modalRoot.innerHTML = `<div class="modal-backdrop"${locked ? '' : ' data-act="closeModal"'}><div class="modal" role="dialog" aria-modal="true" aria-label="${label}" data-act="noop">${html}</div></div>`;
+  modalRoot.innerHTML = `<div class="modal-backdrop ${variant}"${locked ? '' : ' data-act="closeModal"'}><div class="modal" role="dialog" aria-modal="true" aria-label="${label}" data-act="noop">${html}</div></div>`;
   document.body.classList.add('modal-open');
   const first = modalRoot.querySelector('input, button, a');
   if (first && isWide()) first.focus();
@@ -263,6 +264,17 @@ app.signOut = async () => {
   location.hash = '#/today';
   location.reload();
 };
+
+// Phones: hide the bottom bars while the keyboard is up, so they don't sit over what you're typing.
+const typing = (el) => el && (el.tagName === 'TEXTAREA' || (el.tagName === 'INPUT' && !/^(checkbox|radio|button|submit|file)$/.test(el.type)));
+document.addEventListener('focusin', (e) => {
+  if (typing(e.target)) document.body.classList.add('kb-open');
+});
+document.addEventListener('focusout', () => {
+  setTimeout(() => {
+    if (!typing(document.activeElement)) document.body.classList.remove('kb-open');
+  }, 50);
+});
 
 // Make sure pending edits are sent before the app is backgrounded or closed.
 document.addEventListener('visibilitychange', () => {

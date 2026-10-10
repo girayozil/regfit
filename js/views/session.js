@@ -11,7 +11,7 @@ const SETS = Array.from({ length: 10 }, (_, i) => i + 1);
 const REPS = [...Array.from({ length: 30 }, (_, i) => i + 1), 35, 40, 50];
 const TIMED = ['15s', '20s', '30s', '45s', '60s', '75s', '90s', '120s'];
 
-const ui = { copySrc: {}, openSets: new Set(), openNotes: new Set() }; // items showing the set-by-set editor / an empty note box
+const ui = { copySrc: {}, openSets: new Set() }; // openSets: items showing the set-by-set editor
 
 function exerciseOptions(selected) {
   const groups = ['Upper', 'Lower', 'Core']
@@ -84,7 +84,6 @@ function itemRow(s, it, i, n) {
     </button>`;
   }
 
-  const noteShown = !!it.note || ui.openNotes.has(it.id);
   const exLabel = it.exId ? exName(it.exId) : 'exercise ' + (i + 1);
   return `<div class="item-row${open ? ' has-panel' : ''}" data-row="${it.id}">
     <button type="button" class="drag-handle" data-drag ${d} aria-label="Reorder ${esc(exLabel)}: drag, or use the arrow keys" title="Drag to reorder">${icon.grip(18)}</button>
@@ -99,11 +98,7 @@ function itemRow(s, it, i, n) {
         <button type="button" class="btn-icon sm" data-act="removeItem" ${d} aria-label="Remove exercise">${icon.x(16)}</button>
       </span>
     </div>
-    ${
-      noteShown
-        ? `<label class="item-note"><span class="mini-label">Note</span><textarea class="field" rows="${Math.min(5, Math.max(1, (it.note || '').split('\n').length))}" placeholder="Note" data-input="itemNote" data-change="itemNoteDone" ${d}>${esc(it.note || '')}</textarea></label>`
-        : ''
-    }
+    ${it.note ? `<button type="button" class="item-note" data-act="toggleNote" ${d} aria-label="Edit note">${esc(it.note)}</button>` : ''}
     ${open ? setPanel(it, d, tracking, last) : ''}
   </div>`;
 }
@@ -348,35 +343,47 @@ on('click', 'removeSet', (el) => {
 });
 
 // ---------- notes ----------
+// Edited in a small panel pinned to the top of the screen, so the phone keyboard never covers it.
+// Changes only count once saved; Discard (or closing the panel) leaves the note as it was.
+
+const editingNote = {};
 
 on('click', 'toggleNote', (el) => {
-  const { it } = itemOf(el);
-  if (!it.note && ui.openNotes.has(it.id)) {
-    ui.openNotes.delete(it.id);
-    app.rerender();
-    return;
-  }
-  ui.openNotes.add(it.id);
-  if (!document.querySelector(`[data-input="itemNote"][data-item="${it.id}"]`)) app.rerender();
-  const box = document.querySelector(`[data-input="itemNote"][data-item="${it.id}"]`);
-  if (box) box.focus();
+  const { s, it } = itemOf(el);
+  editingNote.session = s.id;
+  editingNote.item = it.id;
+  app.modal(
+    `<div class="modal-head"><h2>Note · ${esc(it.exId ? exName(it.exId) : 'Exercise')}</h2></div>
+     <textarea class="field note-input" rows="4" placeholder="Note" aria-label="Note">${esc(it.note || '')}</textarea>
+     <div class="note-actions">
+       <button type="button" class="btn btn-outline" data-act="discardNote">${icon.x(16)}Discard</button>
+       <button type="button" class="btn btn-dark" data-act="saveNote">${icon.check(16)}Save</button>
+     </div>`,
+    'Exercise note',
+    false,
+    'sheet-top'
+  );
+  // Focus inside the tap itself, or iOS won't open the keyboard.
+  const box = document.querySelector('.note-input');
+  box.focus();
+  box.setSelectionRange(box.value.length, box.value.length);
 });
 
-// Saved as you type; no re-render, so the keyboard stays up.
-on('input', 'itemNote', (el) => {
-  const { it } = itemOf(el);
-  it.note = el.value;
-  el.rows = Math.min(5, Math.max(1, el.value.split('\n').length));
-  const btn = document.querySelector(`[data-act="toggleNote"][data-item="${it.id}"]`);
-  if (btn) btn.classList.toggle('has-note', !!el.value.trim());
-  save();
+on('click', 'saveNote', () => {
+  const s = sessionById(editingNote.session);
+  const it = s && s.items.find((x) => x.id === editingNote.item);
+  const box = document.querySelector('.note-input');
+  if (it && box) {
+    const text = box.value.trim();
+    if (text) it.note = text;
+    else delete it.note;
+    save();
+  }
+  app.closeModal();
+  app.rerender();
 });
-on('change', 'itemNoteDone', (el) => {
-  const { it } = itemOf(el);
-  it.note = el.value.trim();
-  if (!it.note) delete it.note;
-  save();
-});
+
+on('click', 'discardNote', () => app.closeModal());
 
 // ---------- drag to reorder ----------
 // Only the handle starts a drag. With a mouse it starts straight away; on touch screens it needs
