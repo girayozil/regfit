@@ -67,75 +67,184 @@ const libraryExercises = () =>
   }));
 
 // ---------- demo seed ----------
+//
+// Realistic-looking history so lists and charts have something to show:
+// - each client alternates A/B workouts per focus, months of history, a holiday gap, missed sessions
+// - double progression: reps climb through a range, then the weight goes up and reps reset
+// - a lighter (deload) week every seventh week, the odd bad day
+// - varied set shapes: warm-up ramp, pyramid, top set + back-offs, drop set, tired last set
+// A seeded random generator keeps the demo identical every time it's loaded.
 
-const TEMPLATES = {
-  'Upper body': [['chest-press-machine', 3, 10, 70], ['lat-pulldown', 3, 12, 65], ['seated-cable-row', 3, 10, 57.5], ['lateral-raise', 3, 12, 8], ['bicep-curl', 3, 12, 16], ['tricep-pushdown', 3, 12, 25]],
-  'Lower body': [['leg-press', 3, 10, 160], ['romanian-deadlift', 3, 10, 80], ['walking-lunge', 3, 12, 16], ['lying-leg-curl', 3, 12, 40], ['standing-calf-raise', 3, 15, 60], ['plank', 3, '60s', '']],
-  'Full body': [['back-squat', 3, 8, 80], ['barbell-bench-press', 3, 8, 60], ['dumbbell-row', 3, 10, 26], ['hip-thrust', 3, 10, 90], ['dead-bug', 3, 10, '']],
+// [exercise id, base weight (strength factor 1), rep range, weight step, set shape, sets]
+// Rep- and time-tracked exercises use '' weight; their "reps" progress instead (seconds for time).
+const EX = {
+  'chest-press-machine': [55, [8, 12], 2.5, 'ramp', 4],
+  'lat-pulldown': [50, [8, 12], 2.5, 'straight', 3],
+  'seated-cable-row': [45, [8, 12], 2.5, 'straight', 3],
+  'lateral-raise': [6, [10, 15], 1, 'drop', 3],
+  'bicep-curl': [12, [8, 12], 1, 'straight', 3],
+  'tricep-pushdown': [20, [10, 15], 2.5, 'straight', 3],
+  'barbell-bench-press': [55, [5, 8], 2.5, 'top', 3],
+  'pull-up': ['', [4, 10], 1, 'straight', 3],
+  'dumbbell-row': [22, [8, 12], 2, 'straight', 3],
+  'overhead-press': [30, [6, 10], 2.5, 'pyramid', 3],
+  'face-pull': [15, [12, 15], 2.5, 'straight', 3],
+  'hammer-curl': [12, [8, 12], 1, 'straight', 3],
+  'skull-crusher': [20, [8, 12], 2.5, 'straight', 3],
+  'leg-press': [120, [8, 12], 10, 'ramp', 4],
+  'romanian-deadlift': [60, [8, 10], 5, 'straight', 3],
+  'walking-lunge': [12, [10, 12], 2, 'straight', 3],
+  'lying-leg-curl': [30, [10, 12], 2.5, 'straight', 3],
+  'standing-calf-raise': [50, [12, 15], 5, 'drop', 3],
+  'plank': ['', [45, 90], 15, 'straight', 3],
+  'back-squat': [70, [5, 8], 2.5, 'top', 3],
+  'hip-thrust': [70, [8, 12], 5, 'pyramid', 3],
+  'bulgarian-split-squat': [10, [8, 12], 2, 'straight', 3],
+  'leg-extension': [35, [10, 15], 2.5, 'drop', 3],
+  'hanging-leg-raise': ['', [6, 15], 1, 'straight', 3],
+  'side-plank': ['', [30, 60], 10, 'straight', 2],
+  'deadlift': [90, [3, 6], 5, 'top', 3],
+  'incline-dumbbell-press': [20, [8, 12], 2, 'straight', 3],
+  'goblet-squat': [20, [10, 12], 4, 'straight', 3],
+  'dead-bug': ['', [8, 15], 1, 'straight', 3],
+};
+const TIMED_EX = new Set(['plank', 'side-plank']);
+
+const PROGRAMS = {
+  'Upper body': [
+    ['chest-press-machine', 'lat-pulldown', 'seated-cable-row', 'lateral-raise', 'bicep-curl', 'tricep-pushdown'],
+    ['barbell-bench-press', 'pull-up', 'dumbbell-row', 'overhead-press', 'face-pull', 'hammer-curl', 'skull-crusher'],
+  ],
+  'Lower body': [
+    ['leg-press', 'romanian-deadlift', 'walking-lunge', 'lying-leg-curl', 'standing-calf-raise', 'plank'],
+    ['back-squat', 'hip-thrust', 'bulgarian-split-squat', 'leg-extension', 'hanging-leg-raise', 'side-plank'],
+  ],
+  'Full body': [
+    ['back-squat', 'barbell-bench-press', 'dumbbell-row', 'hip-thrust', 'dead-bug'],
+    ['deadlift', 'incline-dumbbell-press', 'lat-pulldown', 'goblet-squat', 'plank'],
+  ],
 };
 
-const roundLoad = (w) => (w < 20 ? Math.round(w) : Math.round(w / 2.5) * 2.5);
+// Small deterministic PRNG (mulberry32).
+function rng(seed) {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
 
-const buildItems = (focus, factor, k) =>
-  TEMPLATES[focus].map(([ex, count, reps, w], i) => {
-    const r = isTimed(reps) ? (k >= 12 ? '90s' : k >= 5 ? '75s' : reps) : reps;
-    // Slow progress with small ups and downs, like real training.
-    const wobble = [0, 0.02, -0.015, 0.01][k % 4];
-    const load = w === '' ? '' : roundLoad(w * factor * (0.82 + 0.012 * k + wobble));
-    const sets = Array.from({ length: count }, () => ({ reps: r, weight: load }));
-    // First exercise ramps up: a lighter, higher-rep opening set.
-    if (i === 0 && load !== '') sets[0] = { reps: r + 2, weight: roundLoad(load * 0.85) };
-    return { id: uid('it'), exId: 'ex-' + ex, sets };
-  });
+const roundLoad = (w, step) => {
+  if (step < 2.5) return Math.max(1, Math.round(w));
+  return Math.max(step, Math.round(w / step) * step);
+};
+
+// Sets for one exercise from its working weight `w` and reps `r`, in the exercise's set shape.
+function shapeSets(key, w, r, rand, light) {
+  const [base, , step, shape, count] = EX[key];
+  const timed = TIMED_EX.has(key);
+  const repsOf = (n) => (timed ? Math.round(n / 5) * 5 + 's' : Math.max(1, Math.round(n)));
+  if (base === '') {
+    const sets = Array.from({ length: count }, () => ({ reps: repsOf(r), weight: '' }));
+    if (rand() < 0.4) sets[count - 1].reps = repsOf(r - (timed ? 10 : 2));
+    return sets;
+  }
+  const load = (f) => roundLoad(w * f * (light ? 0.85 : 1), step);
+  let sets;
+  if (shape === 'ramp') sets = [{ reps: r + 2, weight: load(0.8) }, ...Array.from({ length: count - 1 }, () => ({ reps: r, weight: load(1) }))];
+  else if (shape === 'pyramid') sets = [{ reps: r + 2, weight: load(0.85) }, { reps: r + 1, weight: load(0.93) }, { reps: r, weight: load(1) }];
+  else if (shape === 'top') sets = [{ reps: r, weight: load(1) }, { reps: r + 2, weight: load(0.88) }, { reps: r + 2, weight: load(0.88) }];
+  else if (shape === 'drop') sets = [...Array.from({ length: count - 1 }, () => ({ reps: r, weight: load(1) })), { reps: r + 4, weight: load(0.7) }];
+  else sets = Array.from({ length: count }, () => ({ reps: r, weight: load(1) }));
+  // Tired last set: a rep or two short.
+  if (shape !== 'drop' && rand() < 0.35) sets[sets.length - 1].reps = Math.max(1, sets[sets.length - 1].reps - (rand() < 0.5 ? 1 : 2));
+  return sets;
+}
 
 export function demoData() {
   const today = todayISO();
   const clients = [
-    // id, first, last, age, sex, height, weight, strength factor, weekdays (Mon=0), times, plan, notes
-    ['marco', 'Marco', 'Rossi', 41, 'Male', 182, 86.5, 1.0, [1, 3], ['09:30', '09:30'], 'split', 'Goal: build strength before ski season. Mild lower-back tightness — warm up well.'],
-    ['sarah', 'Sarah', 'Collins', 29, 'Female', 168, 61, 0.6, [0, 3, 5], ['07:00', '07:00', '08:00'], 'split', 'Half-marathon in March. Keep legs fresh on long-run weeks.'],
-    ['ana', 'Ana', 'Lopes', 36, 'Female', 163, 58, 0.55, [0, 2], ['12:00', '12:00'], 'full', ''],
-    ['james', 'James', 'Okafor', 33, 'Male', 188, 92, 1.15, [1, 3], ['16:30', '16:30'], 'split', 'Plays Sunday league football.'],
-    ['elif', 'Elif', 'Demir', 27, 'Female', 170, 63, 0.65, [2, 4], ['08:00', '08:00'], 'full', ''],
-    ['priya', 'Priya', 'Shah', 45, 'Female', 160, 66, 0.45, [4, 5], ['18:00', '10:00'], 'split', 'Shoulder impingement history — no overhead pressing.'],
-    ['tom', 'Tom', 'Becker', 52, 'Male', 178, 84, 0.8, [0, 5], ['11:00', '11:00'], 'split', ''],
-    ['lucas', 'Lucas', 'Martin', 38, 'Male', 180, 79, 0.9, [], [], 'split', ''],
+    // key, first, last, age, sex, height, weight, strength, weekdays (Mon=0), times, plan, history (days), holiday start (days ago), notes
+    ['marco', 'Marco', 'Rossi', 41, 'Male', 182, 86.5, 1.0, [1, 3], ['09:30', '09:30'], 'split', 365, 70, 'Goal: build strength before ski season. Mild lower-back tightness — warm up well.'],
+    ['sarah', 'Sarah', 'Collins', 29, 'Female', 168, 61, 0.6, [0, 3, 5], ['07:00', '07:00', '08:00'], 'split', 270, 120, 'Half-marathon in March. Keep legs fresh on long-run weeks.'],
+    ['ana', 'Ana', 'Lopes', 36, 'Female', 163, 58, 0.55, [0, 2], ['12:00', '12:00'], 'full', 180, 60, ''],
+    ['james', 'James', 'Okafor', 33, 'Male', 188, 92, 1.15, [1, 3], ['16:30', '16:30'], 'split', 420, 200, 'Plays Sunday league football.'],
+    ['elif', 'Elif', 'Demir', 27, 'Female', 170, 63, 0.65, [2, 4], ['08:00', '08:00'], 'full', 240, 90, ''],
+    ['priya', 'Priya', 'Shah', 45, 'Female', 160, 66, 0.45, [4, 5], ['18:00', '10:00'], 'split', 120, 45, 'Shoulder impingement history — no overhead pressing.'],
+    ['tom', 'Tom', 'Becker', 52, 'Male', 178, 84, 0.8, [0, 5], ['11:00', '11:00'], 'split', 300, 150, ''],
+    ['lucas', 'Lucas', 'Martin', 38, 'Male', 180, 79, 0.9, [1, 4], ['17:00', '17:00'], 'split', 140, -1, 'Paused training in August — follow up.'],
   ];
   const out = { version: 2, exercises: libraryExercises(), clients: [], sessions: [] };
-  clients.forEach(([key, first, last, age, sex, height, weight, factor, days, times, plan, notes], ci) => {
+
+  clients.forEach(([key, first, last, age, sex, height, weight, factor, days, times, plan, history, holiday, notes], ci) => {
     const id = 'c-' + key;
-    out.clients.push({ id, first, last, age, sex, height, weight, notes, createdAt: addDays(today, -125 - ci * 9) });
-    const focusCount = { 'Upper body': 0, 'Lower body': 0, 'Full body': 0 };
-    const lastDoneOn = {};
-    let alt = ci % 2;
-    const add = (date, time, isPast) => {
-      const focus = plan === 'full' ? 'Full body' : alt++ % 2 ? 'Lower body' : 'Upper body';
-      const k = focusCount[focus]++;
-      const soon = date <= addDays(today, 2);
-      out.sessions.push({
-        id: uid('s'),
-        clientId: id,
-        date,
-        time,
-        duration: 60,
-        focus,
-        status: isPast ? 'done' : 'planned',
-        started: isPast || soon,
-        copiedFrom: !isPast && soon && lastDoneOn[focus] ? fmtShort(lastDoneOn[focus]) + ' · ' + focus : null,
-        items: isPast || soon ? buildItems(focus, factor, k) : [],
-      });
-      if (isPast) lastDoneOn[focus] = date;
+    const rand = rng(1000 + ci * 7919);
+    const start = addDays(today, -history);
+    out.clients.push({ id, first, last, age, sex, height, weight, notes, createdAt: start });
+
+    // Working weight and reps per exercise; starts a little under the base for gradual gains.
+    const state = {};
+    const stateOf = (ex) => {
+      if (!state[ex]) {
+        const [base, [lo]] = EX[ex];
+        state[ex] = { w: base === '' ? 0 : base * factor * (0.82 + rand() * 0.06), r: lo };
+      }
+      return state[ex];
     };
-    if (key === 'lucas') {
-      add(addDays(today, -40), '17:00', true);
-      add(addDays(today, -37), '17:00', true);
-      return;
-    }
-    for (let off = -120; off <= 6; off++) {
+    // Next performance of an exercise: sets now, then progress for next time.
+    const perform = (ex, light, bad) => {
+      const st = stateOf(ex);
+      const [base, [lo, hi], step] = EX[ex];
+      const sets = shapeSets(ex, st.w, bad ? st.r - 1 : st.r, rand, light);
+      if (!light && !bad && rand() < 0.85) {
+        if (base === '') st.r = Math.min(hi, st.r + step);
+        else if (st.r < hi) st.r = Math.min(hi, st.r + (rand() < 0.35 ? 2 : 1));
+        else {
+          st.w += step;
+          st.r = lo;
+        }
+      }
+      return { id: uid('it'), exId: 'ex-' + ex, sets };
+    };
+    const preview = (ex) => {
+      const st = stateOf(ex);
+      return { id: uid('it'), exId: 'ex-' + ex, sets: shapeSets(ex, st.w, st.r, rng(1), false) };
+    };
+
+    const focuses = plan === 'full' ? ['Full body'] : ['Upper body', 'Lower body'];
+    const variant = {};
+    const lastDoneOn = {};
+    let turn = ci % 2;
+    const end = key === 'lucas' ? -45 : 6; // Lucas stopped coming six weeks ago
+    for (let off = -history; off <= end; off++) {
       const date = addDays(today, off);
       const dow = (fromISO(date).getDay() + 6) % 7;
-      const i = days.indexOf(dow);
-      if (i !== -1) add(date, times[i], off < 0);
+      const di = days.indexOf(dow);
+      if (di === -1) continue;
+      const past = off < 0;
+      if (past && holiday > 0 && off >= -holiday && off < -holiday + 12) continue; // holiday
+      if (past && rand() < 0.08) continue; // missed session
+      const focus = focuses[turn++ % focuses.length];
+      const v = (variant[focus] = ((variant[focus] ?? -1) + 1) % 2);
+      // Priya's notes rule out overhead pressing.
+      const list = PROGRAMS[focus][v].filter((ex) => !(key === 'priya' && ex === 'overhead-press'));
+      const session = { id: uid('s'), clientId: id, date, time: times[di], duration: 60, focus, status: past ? 'done' : 'planned', started: past, copiedFrom: null, items: [] };
+      if (past) {
+        const week = Math.floor((off + history) / 7);
+        const light = week % 7 === 6;
+        const bad = !light && rand() < 0.1;
+        session.items = list.map((ex) => perform(ex, light, bad));
+        lastDoneOn[focus + v] = date;
+      } else if (off <= 2) {
+        // Planned in the next few days: already built from the matching previous workout.
+        session.items = list.map(preview);
+        session.started = true;
+        if (lastDoneOn[focus + v]) session.copiedFrom = fmtShort(lastDoneOn[focus + v]) + ' · ' + focus;
+      }
+      out.sessions.push(session);
     }
   });
   return out;
