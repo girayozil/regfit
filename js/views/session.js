@@ -151,7 +151,7 @@ export function render(id) {
     <div class="card-head">
       <h2>Exercises</h2>
       ${!isDone ? `<span class="pill pill-soft">${s.copiedFrom ? 'Copied from ' + esc(s.copiedFrom) : 'Started from scratch'}</span>` : ''}
-      ${!isDone ? `<button type="button" class="btn btn-sm btn-ghost" data-act="changeStart" data-id="${s.id}">Change start</button>` : ''}
+      ${!isDone ? `<button type="button" class="btn btn-sm btn-ghost" data-act="changeStart" data-id="${s.id}">Start over</button>` : ''}
     </div>
     <div class="item-head" aria-hidden="true"><span></span><span>Exercise</span><span>Sets</span><span>Reps</span><span>Weight</span><span>Last · Best</span><span></span></div>
     <div class="item-list" data-session="${s.id}">
@@ -241,7 +241,7 @@ on('click', 'startCopy', (el) => {
 
 on('click', 'changeStart', (el) => {
   const s = sessionOf(el);
-  if (s.items.some((it) => it.exId) && !confirm('Clear the exercises in this session and choose how to start again?')) return;
+  if (s.items.some((it) => it.exId) && !confirm('Start over? This removes all exercises from this session.')) return;
   s.items = [];
   s.started = false;
   s.copiedFrom = null;
