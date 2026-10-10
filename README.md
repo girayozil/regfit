@@ -35,4 +35,7 @@ All data is stored in the browser on that device (`localStorage`). Devices do no
 - `js/app.js` — hash router, event delegation, toast/modal
 - `js/store.js` — data model, persistence, demo data, personal-best logic
 - `js/views/*.js` — one module per screen
+- `js/pdf.js` — client training-summary PDF (name only, no other personal details)
+- `vendor/jspdf.umd.min.js` — [jsPDF](https://github.com/parallax/jsPDF) 4.2.1, MIT licence
+- `fonts/` — Manrope (SIL Open Font License, see `fonts/OFL.txt`), embedded in exported PDFs
 - `sw.js`, `manifest.webmanifest`, `icons/` — installable/offline support

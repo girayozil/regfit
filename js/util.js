@@ -107,6 +107,8 @@ export const icon = {
   clock: (s) => svg('<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>', s),
   download: (s) => svg('<path d="M12 4v11M7 10l5 5 5-5M5 20h14"/>', s),
   upload: (s) => svg('<path d="M12 20V9M7 14l5-5 5 5M5 4h14"/>', s),
+  share: (s) => svg('<path d="M12 15V3M7 8l5-5 5 5M5 12v7a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-7"/>', s),
+  file: (s) => svg('<path d="M14 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8z"/><path d="M14 3v5h5M9 13h6M9 17h4"/>', s),
 };
 
 // Native-looking select with a chevron overlay.

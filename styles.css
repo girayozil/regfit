@@ -614,6 +614,38 @@ button.choice:hover { border-color: var(--ink); }
 .file-btn input { position: absolute; inset: 0; opacity: 0; cursor: pointer; font-size: 0; }
 .steps { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 6px; font-weight: 600; color: var(--ink-2); }
 
+/* ---------- Export PDF ---------- */
+
+.export-opts { display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: 16px; overflow: hidden; }
+.export-opt + .export-opt { border-top: 1px solid var(--line); }
+.switch-row { display: flex; align-items: center; gap: 14px; padding: 14px 16px; min-height: 64px; cursor: pointer; }
+.switch-row.is-disabled { cursor: default; }
+.switch-row.is-disabled .switch-text { opacity: 0.55; }
+.switch-text { flex: 1; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.switch-text strong { font-size: 15px; font-weight: 800; }
+.switch-text span { font-size: 13px; font-weight: 600; color: var(--muted); }
+.switch {
+  -webkit-appearance: none; appearance: none; flex-shrink: 0; margin: 0; cursor: pointer;
+  width: 50px; height: 30px; border-radius: 999px; background: #D5D9D2; position: relative; transition: background .15s;
+}
+.switch::after {
+  content: ''; position: absolute; top: 3px; left: 3px; width: 24px; height: 24px; border-radius: 50%;
+  background: #fff; box-shadow: 0 1px 3px rgba(18, 20, 19, 0.25); transition: transform .15s;
+}
+.switch:checked { background: var(--ink); }
+.switch:checked::after { transform: translateX(20px); background: var(--accent); }
+.switch:disabled { cursor: default; opacity: 0.5; }
+.export-range { display: flex; flex-direction: column; gap: 12px; padding: 0 16px 16px; }
+.export-range .seg-btn { padding: 0 6px; font-size: 13px; }
+.export-status { font-size: 13px; font-weight: 700; color: var(--muted); }
+.export-status.error { color: var(--danger); }
+.export-actions { display: flex; gap: 8px; }
+.export-actions .btn { flex: 1; }
+@media (max-width: 499px) {
+  .export-range .form-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .profile-head .head-actions .btn-dark { flex-basis: 100%; }
+}
+
 /* ---------- modal & toast ---------- */
 
 .modal-backdrop {

@@ -3,6 +3,8 @@
 import { esc, icon, on, app, fullName, initials, tint, relDay, fmtShort, monShort, dayNum, fmtMonthYear, todayISO, addDays, fmtKg } from '../util.js';
 import { clientById, sessionsFor, doneFor, nextSession, personalBests, exName, exById, describe, createSession, copyItems, sessionById, save, sessionEnded } from '../store.js';
 
+import './export.js';
+
 const ui = { open: {} }; // expanded past session per client
 
 const statTile = (label, value, unit, extra = '') =>
@@ -88,6 +90,7 @@ export function render(id) {
       </div>
       <div class="head-actions">
         <a class="btn btn-outline" href="#/client/${c.id}/edit">${icon.edit(16)}Edit</a>
+        <button type="button" class="btn btn-outline" data-act="openExport" data-id="${c.id}">${icon.file(16)}Export PDF</button>
         <button type="button" class="btn btn-dark" data-act="scheduleNext" data-id="${c.id}">${icon.today(16)}Schedule next workout</button>
       </div>
     </div>
