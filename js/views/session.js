@@ -101,7 +101,7 @@ function itemRow(s, it, i, n) {
     </div>
     ${
       noteShown
-        ? `<label class="item-note"><span class="mini-label">Note</span><textarea class="field" rows="${Math.min(5, Math.max(1, (it.note || '').split('\n').length))}" placeholder="Note for this exercise, e.g. seat height 4, slow on the way down" data-input="itemNote" data-change="itemNoteDone" ${d}>${esc(it.note || '')}</textarea></label>`
+        ? `<label class="item-note"><span class="mini-label">Note</span><textarea class="field" rows="${Math.min(5, Math.max(1, (it.note || '').split('\n').length))}" placeholder="Note" data-input="itemNote" data-change="itemNoteDone" ${d}>${esc(it.note || '')}</textarea></label>`
         : ''
     }
     ${open ? setPanel(it, d, tracking, last) : ''}
