@@ -122,6 +122,7 @@ export const opt = (value, label, selected) =>
 // App-level hooks, filled in by app.js (keeps views free of circular imports).
 export const app = {
   rerender: () => {},
+  afterRender: null,
   toast: () => {},
   modal: () => {},
   closeModal: () => {},

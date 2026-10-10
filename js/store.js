@@ -78,8 +78,10 @@ const roundLoad = (w) => (w < 20 ? Math.round(w) : Math.round(w / 2.5) * 2.5);
 
 const buildItems = (focus, factor, k) =>
   TEMPLATES[focus].map(([ex, count, reps, w], i) => {
-    const r = isTimed(reps) ? (k >= 2 ? '75s' : reps) : reps;
-    const load = w === '' ? '' : roundLoad(w * factor * (1 + 0.025 * k));
+    const r = isTimed(reps) ? (k >= 12 ? '90s' : k >= 5 ? '75s' : reps) : reps;
+    // Slow progress with small ups and downs, like real training.
+    const wobble = [0, 0.02, -0.015, 0.01][k % 4];
+    const load = w === '' ? '' : roundLoad(w * factor * (0.82 + 0.012 * k + wobble));
     const sets = Array.from({ length: count }, () => ({ reps: r, weight: load }));
     // First exercise ramps up: a lighter, higher-rep opening set.
     if (i === 0 && load !== '') sets[0] = { reps: r + 2, weight: roundLoad(load * 0.85) };
@@ -102,7 +104,7 @@ export function demoData() {
   const out = { version: 2, exercises: libraryExercises(), clients: [], sessions: [] };
   clients.forEach(([key, first, last, age, sex, height, weight, factor, days, times, plan, notes], ci) => {
     const id = 'c-' + key;
-    out.clients.push({ id, first, last, age, sex, height, weight, notes, createdAt: addDays(today, -60 - ci * 17) });
+    out.clients.push({ id, first, last, age, sex, height, weight, notes, createdAt: addDays(today, -125 - ci * 9) });
     const focusCount = { 'Upper body': 0, 'Lower body': 0, 'Full body': 0 };
     const lastDoneOn = {};
     let alt = ci % 2;
@@ -125,11 +127,11 @@ export function demoData() {
       if (isPast) lastDoneOn[focus] = date;
     };
     if (key === 'lucas') {
-      add(addDays(today, -19), '17:00', true);
-      add(addDays(today, -17), '17:00', true);
+      add(addDays(today, -40), '17:00', true);
+      add(addDays(today, -37), '17:00', true);
       return;
     }
-    for (let off = -21; off <= 6; off++) {
+    for (let off = -120; off <= 6; off++) {
       const date = addDays(today, off);
       const dow = (fromISO(date).getDay() + 6) % 7;
       const i = days.indexOf(dow);
@@ -357,6 +359,30 @@ export function personalBests(clientId) {
       return pb;
     })
     .sort((a, b) => a.name.localeCompare(b.name));
+}
+
+// One point per completed session for a chart: that session's value in a personal-best category.
+export function exerciseSeries(clientId, exId, key) {
+  const tracking = trackingOf(exId);
+  const out = [];
+  doneFor(clientId).forEach((s) => {
+    let best = null;
+    s.items
+      .filter((it) => it.exId === exId)
+      .forEach((it) => {
+        const r = itemRecords(it, tracking)[key];
+        if (r && (!best || better(r.sc, best.sc))) best = r;
+      });
+    if (best) out.push({ date: s.date, sessionId: s.id, value: best.sc[0], display: best.display, detail: best.detail });
+  });
+  return out;
+}
+
+// Unit of a series' values: weight for weight-tracked exercises and for "Heaviest", else reps / seconds.
+export function seriesUnit(exId, key) {
+  const tracking = trackingOf(exId);
+  if (tracking === 'Weight × reps' || key === 'heaviest') return 'kg';
+  return tracking === 'Reps only' ? 'reps' : 's';
 }
 
 // The single headline best for an exercise (shown in the session builder).

@@ -39,6 +39,10 @@ function render() {
     html = `<div class="empty-state"><h1 class="page-title">Page not found</h1><a class="btn btn-dark" href="#/today">Go to Today</a></div>`;
   }
   viewEl.innerHTML = html;
+  // A view can ask for work once its markup is in the page (e.g. measuring a chart's width).
+  const after = app.afterRender;
+  app.afterRender = null;
+  if (after) after();
   document.querySelectorAll('[data-nav]').forEach((a) => {
     const active = a.dataset.nav === nav;
     a.classList.toggle('active', active);

@@ -4,6 +4,7 @@ import { esc, icon, on, app, fullName, initials, tint, relDay, fmtShort, monShor
 import { clientById, sessionsFor, doneFor, nextSession, personalBests, PB_CATEGORIES, exName, itemSummary, totalSets, createSession, copyItems, sessionById, save, sessionEnded } from '../store.js';
 
 import './export.js';
+import { cardHtml as progressCard } from './chart.js';
 
 const ui = { open: {}, pbCat: 'heaviest' }; // open: expanded past session per client; pbCat: personal-best category shown
 
@@ -120,6 +121,7 @@ export function render(id) {
     ${c.notes ? `<p class="notes">${esc(c.notes)}</p>` : ''}
   </section>
   ${upcoming}
+  ${progressCard(c.id)}
   <div class="profile-grid">
     <section class="card" aria-label="Personal bests">
       <div class="card-head"><h2>${icon.trophy(18)}Personal bests</h2><span class="muted small">${pbs.length} exercise${pbs.length === 1 ? '' : 's'}</span></div>
