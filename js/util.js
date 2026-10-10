@@ -109,6 +109,8 @@ export const icon = {
   upload: (s) => svg('<path d="M12 20V9M7 14l5-5 5 5M5 4h14"/>', s),
   share: (s) => svg('<path d="M12 15V3M7 8l5-5 5 5M5 12v7a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-7"/>', s),
   list: (s) => svg('<path d="M9 6h11M9 12h11M9 18h11M4.5 6h.01M4.5 12h.01M4.5 18h.01"/>', s, 2.2),
+  grip: (s) => svg('<path d="M9 6h.01M15 6h.01M9 12h.01M15 12h.01M9 18h.01M15 18h.01"/>', s, 3.2),
+  note: (s) => svg('<path d="M5 4h14v11l-5 5H5z"/><path d="M14 20v-5h5M9 9h6M9 13h3"/>', s),
   file: (s) => svg('<path d="M14 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8z"/><path d="M14 3v5h5M9 13h6M9 17h4"/>', s),
 };
 

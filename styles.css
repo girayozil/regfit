@@ -487,6 +487,7 @@ a.client-row:hover { background: var(--soft); }
 .hist-item { display: grid; grid-template-columns: minmax(120px, 1fr) auto minmax(0, 1.3fr); gap: 10px; align-items: baseline; padding: 8px 0; border-bottom: 1px solid #E8EAE5; font-size: 13px; }
 .hist-item > span:first-child { font-weight: 700; }
 .hist-item strong { font-variant-numeric: tabular-nums; text-align: right; }
+.hist-note { grid-column: 1 / -1; font-size: 12px; font-weight: 600; color: var(--ink-2); background: #FFFBEA; border-radius: 8px; padding: 5px 8px; margin-top: -2px; white-space: pre-line; }
 .hist-actions { display: flex; gap: 8px; padding-top: 12px; flex-wrap: wrap; }
 @media (max-width: 499px) { .hist-body { margin-left: 0; } }
 
@@ -524,13 +525,25 @@ button.choice:hover { border-color: var(--ink); }
 .exercises .card-head { flex-wrap: wrap; }
 .item-head, .item-row {
   display: grid;
-  grid-template-columns: 24px minmax(0, 2.4fr) 76px 92px 110px minmax(0, 1.25fr) 150px;
+  grid-template-columns: 30px minmax(0, 1.7fr) 76px 92px 110px minmax(0, 1.35fr) 116px;
   gap: 10px; align-items: center;
 }
 .item-head { font-size: 11px; font-weight: 800; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; padding: 4px 0 8px; }
 .item-row { padding: 8px 0; border-top: 1px solid var(--line-2); }
 .item-row label { display: block; min-width: 0; }
-.item-num { font-size: 13px; font-weight: 800; color: var(--muted); font-variant-numeric: tabular-nums; }
+.item-foot { display: contents; }
+.drag-handle {
+  width: 30px; height: 44px; border: 0; background: transparent; color: #9DA39E; border-radius: 8px;
+  display: grid; place-items: center; cursor: grab; touch-action: none; padding: 0;
+}
+.drag-handle:hover { color: var(--ink); background: var(--line-2); }
+.item-row.dragging { position: relative; z-index: 10; background: var(--surface); border-radius: 14px; box-shadow: 0 12px 32px rgba(18, 20, 19, 0.18); border-top-color: transparent; }
+.item-row.dragging .drag-handle { cursor: grabbing; color: var(--ink); }
+body.is-dragging { user-select: none; -webkit-user-select: none; cursor: grabbing; }
+.item-note { grid-column: 2 / -1; }
+.item-note textarea.field { min-height: 0; resize: none; padding: 10px 12px; font-size: 15px; font-weight: 500; line-height: 1.4; font-variant-numeric: normal; background: #FFFBEA; border-color: #EADFB0; }
+.item-note textarea.field:focus { border-color: var(--ink); }
+.btn-icon.sm.has-note { color: var(--ink); background: #FFF3C4; }
 .mini-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 .item-row .select-wrap select, .item-row .field { min-height: 46px; font-size: 16px; }
 .item-row .item-sets select, .item-row .item-reps select { padding-right: 28px; }
@@ -570,23 +583,24 @@ button.choice:hover { border-color: var(--ink); }
 @container (max-width: 760px) {
   .item-head { display: none; }
   .item-row {
-    grid-template-columns: 22px repeat(3, minmax(0, 1fr));
+    grid-template-columns: 30px repeat(3, minmax(0, 1fr));
     grid-template-areas:
-      "num ex ex ex"
+      "drag ex ex ex"
       ". sets reps weight"
-      ". hint hint hint"
-      ". act act act";
+      ". foot foot foot";
     row-gap: 8px; column-gap: 8px; padding: 14px 0;
   }
-  .item-num { grid-area: num; align-self: center; }
+  .drag-handle { grid-area: drag; }
+  .item-foot { grid-area: foot; display: flex; align-items: center; gap: 8px; }
+  .item-foot .item-hint { flex: 1; }
   .item-ex { grid-area: ex; }
   .item-sets { grid-area: sets; }
   .item-reps { grid-area: reps; }
   .item-weight { grid-area: weight; }
-  .item-hint { grid-area: hint; align-self: center; }
-  .item-actions { grid-area: act; margin-top: -4px; }
+
   .item-mixed { grid-column: 3 / span 2; grid-row: 2; align-self: end; min-height: 46px; }
-  .set-panel { grid-column: 1 / -1; grid-row: 5; }
+  .item-note { grid-column: 2 / -1; }
+  .set-panel { grid-column: 1 / -1; }
   .set-head, .set-row { grid-template-columns: 46px minmax(0, 1fr) minmax(0, 1fr) 40px; }
   .item-row .mini-label {
     position: static; width: auto; height: auto; overflow: visible; clip: auto;

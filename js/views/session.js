@@ -2,7 +2,7 @@
 // exercise rows with dropdowns, and logging the session as done.
 
 import { esc, icon, on, app, uid, fullName, initials, tint, relDay, fmtShort, todayISO, isTimed, parseNum, select, opt, minToTime } from '../util.js';
-import { db, sessionById, clientById, sessionsFor, sessionNumber, exById, lastFor, bestFor, personalBests, copyItems, deleteSession, save, REGION_NAME, PB_CATEGORIES, isUniform, itemParts, totalSets, newSets, trackingOf } from '../store.js';
+import { db, sessionById, clientById, sessionsFor, sessionNumber, exById, exName, lastFor, bestFor, personalBests, copyItems, deleteSession, save, REGION_NAME, PB_CATEGORIES, isUniform, itemParts, totalSets, newSets, trackingOf } from '../store.js';
 import { sessionStatus } from './today.js';
 
 const TIMES = Array.from({ length: (22 - 5) * 4 + 1 }, (_, i) => minToTime(5 * 60 + i * 15));
@@ -11,7 +11,7 @@ const SETS = Array.from({ length: 10 }, (_, i) => i + 1);
 const REPS = [...Array.from({ length: 30 }, (_, i) => i + 1), 35, 40, 50];
 const TIMED = ['15s', '20s', '30s', '45s', '60s', '75s', '90s', '120s'];
 
-const ui = { copySrc: {}, openSets: new Set() }; // openSets: items showing the set-by-set editor
+const ui = { copySrc: {}, openSets: new Set(), openNotes: new Set() }; // items showing the set-by-set editor / an empty note box
 
 function exerciseOptions(selected) {
   const groups = ['Upper', 'Lower', 'Core']
@@ -84,18 +84,26 @@ function itemRow(s, it, i, n) {
     </button>`;
   }
 
-  return `<div class="item-row${open ? ' has-panel' : ''}">
-    <span class="item-num">${i + 1}</span>
+  const noteShown = !!it.note || ui.openNotes.has(it.id);
+  const exLabel = it.exId ? exName(it.exId) : 'exercise ' + (i + 1);
+  return `<div class="item-row${open ? ' has-panel' : ''}" data-row="${it.id}">
+    <button type="button" class="drag-handle" data-drag ${d} aria-label="Reorder ${esc(exLabel)}: drag, or use the arrow keys" title="Drag to reorder">${icon.grip(18)}</button>
     <label class="item-ex"><span class="mini-label">Exercise</span>${select(`aria-label="Exercise ${i + 1}" data-change="itemEx" ${d}`, exerciseOptions(it.exId))}</label>
     <label class="item-sets"><span class="mini-label">Sets</span>${select(`aria-label="Sets" data-change="itemSets" ${d}`, setOpts.map((v) => opt(v, v, count)).join(''))}</label>
     ${middle}
-    <span class="item-hint"><span>${esc(hint)}</span>${best ? `<strong>Best ${esc(best)}</strong>` : ''}</span>
-    <span class="item-actions">
-      <button type="button" class="btn-icon sm${open ? ' on' : ''}" data-act="toggleSets" ${d} aria-label="Edit sets one by one" aria-pressed="${open}">${icon.list(16)}</button>
-      <button type="button" class="btn-icon sm" data-act="moveItem" data-dir="-1" ${d} aria-label="Move up"${i === 0 ? ' disabled' : ''}>${icon.up(16)}</button>
-      <button type="button" class="btn-icon sm" data-act="moveItem" data-dir="1" ${d} aria-label="Move down"${i === n - 1 ? ' disabled' : ''}>${icon.down(16)}</button>
-      <button type="button" class="btn-icon sm" data-act="removeItem" ${d} aria-label="Remove exercise">${icon.x(16)}</button>
-    </span>
+    <div class="item-foot">
+      <span class="item-hint"><span>${esc(hint)}</span>${best ? `<strong>Best ${esc(best)}</strong>` : ''}</span>
+      <span class="item-actions">
+        <button type="button" class="btn-icon sm${open ? ' on' : ''}" data-act="toggleSets" ${d} aria-label="Edit sets one by one" aria-pressed="${open}">${icon.list(16)}</button>
+        <button type="button" class="btn-icon sm${it.note ? ' has-note' : ''}" data-act="toggleNote" ${d} aria-label="${it.note ? 'Edit note' : 'Add a note'}">${icon.note(16)}</button>
+        <button type="button" class="btn-icon sm" data-act="removeItem" ${d} aria-label="Remove exercise">${icon.x(16)}</button>
+      </span>
+    </div>
+    ${
+      noteShown
+        ? `<label class="item-note"><span class="mini-label">Note</span><textarea class="field" rows="${Math.min(5, Math.max(1, (it.note || '').split('\n').length))}" placeholder="Note for this exercise, e.g. seat height 4, slow on the way down" data-input="itemNote" data-change="itemNoteDone" ${d}>${esc(it.note || '')}</textarea></label>`
+        : ''
+    }
     ${open ? setPanel(it, d, tracking, last) : ''}
   </div>`;
 }
@@ -150,7 +158,7 @@ export function render(id) {
       ${!isDone ? `<span class="pill pill-soft">${s.copiedFrom ? 'Copied from ' + esc(s.copiedFrom) : 'Started from scratch'}</span>` : ''}
       ${!isDone ? `<button type="button" class="btn btn-sm btn-ghost" data-act="changeStart" data-id="${s.id}">Change start</button>` : ''}
     </div>
-    <div class="item-head" aria-hidden="true"><span>#</span><span>Exercise</span><span>Sets</span><span>Reps</span><span>Weight</span><span>Last · Best</span><span></span></div>
+    <div class="item-head" aria-hidden="true"><span></span><span>Exercise</span><span>Sets</span><span>Reps</span><span>Weight</span><span>Last · Best</span><span></span></div>
     <div class="item-list" data-session="${s.id}">
       ${s.items.length ? s.items.map((it, i) => itemRow(s, it, i, s.items.length)).join('') : `<div class="empty-inline">No exercises yet. Add the first one below.</div>`}
     </div>
@@ -339,14 +347,131 @@ on('click', 'removeSet', (el) => {
   app.rerender();
 });
 
-on('click', 'moveItem', (el) => {
-  const { s, it } = itemOf(el);
+// ---------- notes ----------
+
+on('click', 'toggleNote', (el) => {
+  const { it } = itemOf(el);
+  if (!it.note && ui.openNotes.has(it.id)) {
+    ui.openNotes.delete(it.id);
+    app.rerender();
+    return;
+  }
+  ui.openNotes.add(it.id);
+  if (!document.querySelector(`[data-input="itemNote"][data-item="${it.id}"]`)) app.rerender();
+  const box = document.querySelector(`[data-input="itemNote"][data-item="${it.id}"]`);
+  if (box) box.focus();
+});
+
+// Saved as you type; no re-render, so the keyboard stays up.
+on('input', 'itemNote', (el) => {
+  const { it } = itemOf(el);
+  it.note = el.value;
+  el.rows = Math.min(5, Math.max(1, el.value.split('\n').length));
+  const btn = document.querySelector(`[data-act="toggleNote"][data-item="${it.id}"]`);
+  if (btn) btn.classList.toggle('has-note', !!el.value.trim());
+  save();
+});
+on('change', 'itemNoteDone', (el) => {
+  const { it } = itemOf(el);
+  it.note = el.value.trim();
+  if (!it.note) delete it.note;
+  save();
+});
+
+// ---------- drag to reorder ----------
+// Only the handle starts a drag (it has touch-action: none), so the page still scrolls normally.
+
+const rowIds = (list) => [...list.querySelectorAll(':scope > .item-row')].map((r) => r.dataset.row);
+let drag = null;
+
+function positionDrag() {
+  const { row, list, grab, y } = drag;
+  const rows = () => [...list.querySelectorAll(':scope > .item-row')];
+  row.style.transform = '';
+  // Swap with neighbours while the finger/pointer passes their middle (follows the finger,
+  // whatever the dragged row's height).
+  const mid = y;
+  for (let moved = true; moved; ) {
+    moved = false;
+    const all = rows();
+    const i = all.indexOf(row);
+    const prev = all[i - 1];
+    const next = all[i + 1];
+    if (prev && mid < prev.getBoundingClientRect().top + prev.offsetHeight / 2) {
+      list.insertBefore(row, prev);
+      moved = true;
+    } else if (next && mid > next.getBoundingClientRect().top + next.offsetHeight / 2) {
+      list.insertBefore(next, row);
+      moved = true;
+    }
+  }
+  row.style.transform = `translateY(${y - grab - row.getBoundingClientRect().top}px)`;
+}
+
+function dragFrame() {
+  if (!drag) return;
+  // Scroll when held near the top or bottom of the screen.
+  const edge = 90;
+  const bottom = window.innerHeight - 150;
+  if (drag.y < edge) window.scrollBy(0, -Math.ceil((edge - drag.y) / 6));
+  else if (drag.y > bottom) window.scrollBy(0, Math.ceil((drag.y - bottom) / 6));
+  positionDrag();
+  drag.raf = requestAnimationFrame(dragFrame);
+}
+
+document.addEventListener('pointerdown', (e) => {
+  const handle = e.target.closest('[data-drag]');
+  if (!handle || e.button > 0) return;
+  const row = handle.closest('.item-row');
+  const list = row.parentElement;
+  e.preventDefault();
+  try {
+    handle.setPointerCapture(e.pointerId);
+  } catch (err) {
+    /* capture is a nicety; moves are tracked on the document anyway */
+  }
+  drag = { handle, row, list, grab: e.clientY - row.getBoundingClientRect().top, y: e.clientY, before: rowIds(list).join() };
+  row.classList.add('dragging');
+  document.body.classList.add('is-dragging');
+  drag.raf = requestAnimationFrame(dragFrame);
+});
+document.addEventListener('pointermove', (e) => {
+  if (!drag) return;
+  drag.y = e.clientY;
+  positionDrag();
+});
+const endDrag = () => {
+  if (!drag) return;
+  const { row, list, before } = drag;
+  cancelAnimationFrame(drag.raf);
+  drag = null;
+  row.style.transform = '';
+  row.classList.remove('dragging');
+  document.body.classList.remove('is-dragging');
+  const order = rowIds(list);
+  if (order.join() === before) return;
+  const s = sessionById(list.dataset.session);
+  s.items.sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id));
+  save();
+  app.rerender();
+};
+document.addEventListener('pointerup', endDrag);
+document.addEventListener('pointercancel', endDrag);
+
+// Keyboard: arrow keys on a focused handle move the exercise.
+document.addEventListener('keydown', (e) => {
+  const handle = e.target.closest && e.target.closest('[data-drag]');
+  if (!handle || (e.key !== 'ArrowUp' && e.key !== 'ArrowDown')) return;
+  e.preventDefault();
+  const { s, it } = itemOf(handle);
   const i = s.items.indexOf(it);
-  const j = i + +el.dataset.dir;
+  const j = i + (e.key === 'ArrowUp' ? -1 : 1);
   if (j < 0 || j >= s.items.length) return;
   [s.items[i], s.items[j]] = [s.items[j], s.items[i]];
   save();
   app.rerender();
+  const again = document.querySelector(`[data-drag][data-item="${it.id}"]`);
+  if (again) again.focus();
 });
 
 on('click', 'removeItem', (el) => {

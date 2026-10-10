@@ -77,7 +77,7 @@ export function render(id) {
                     ${s.items
                       .map((it) => {
                         const n = it.sets.length;
-                        return `<div class="hist-item"><span>${esc(exName(it.exId))}</span><span class="muted">${n} set${n === 1 ? '' : 's'}</span><strong>${esc(itemSummary(it))}</strong></div>`;
+                        return `<div class="hist-item"><span>${esc(exName(it.exId))}</span><span class="muted">${n} set${n === 1 ? '' : 's'}</span><strong>${esc(itemSummary(it))}</strong>${it.note ? `<span class="hist-note">${esc(it.note)}</span>` : ''}</div>`;
                       })
                       .join('')}
                     <div class="hist-actions">

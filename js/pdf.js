@@ -74,10 +74,11 @@ function itemCells(it) {
   const name = exName(it.exId);
   if (isUniform(it)) {
     const first = it.sets[0];
-    return { name, work: it.sets.length + ' × ' + repsLabel(first.reps), load: setLoad(first, tracking), sets: null };
+    return { name, work: it.sets.length + ' × ' + repsLabel(first.reps), load: setLoad(first, tracking), sets: null, note: it.note || '' };
   }
   return {
     name,
+    note: it.note || '',
     work: it.sets.length + ' sets',
     load: '',
     sets: it.sets.map((set, i) => ({
@@ -284,8 +285,13 @@ export function buildClientPdf(client, opts) {
     const xWork = M + W * 0.62;
     sessions.forEach((s) => {
       const rows = s.items.map(itemCells);
+      // Exercise notes only when the Notes section is switched on.
+      if (opts.notes) {
+        font('normal', 8.5);
+        rows.forEach((r) => (r.noteLines = r.note ? doc.splitTextToSize('Note: ' + r.note, W - 14) : []));
+      } else rows.forEach((r) => (r.noteLines = []));
       // Keep a session on one page when it fits on a page at all; otherwise at least its first rows.
-      const blockH = 11 + rows.reduce((h, r) => h + 7.5 + (r.sets ? r.sets.length * 5.6 + 1 : 0), 0);
+      const blockH = 11 + rows.reduce((h, r) => h + 7.5 + (r.sets ? r.sets.length * 5.6 + 1 : 0) + r.noteLines.length * 4.4, 0);
       ensure(blockH <= BOTTOM - (M + 16) ? blockH : 11 + 2 * 7.5);
       const sets = totalSets(s.items);
       doc.setFillColor(C.soft);
@@ -321,6 +327,12 @@ export function buildClientPdf(client, opts) {
           });
           y += 1;
         }
+        r.noteLines.forEach((line) => {
+          y += 4.4;
+          ensure(4.4);
+          font('normal', 8.5, C.ink2);
+          doc.text(line, M + 10, y);
+        });
         y += 2.6;
         if (i < rows.length - 1) {
           doc.setDrawColor(C.line);

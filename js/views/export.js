@@ -5,6 +5,9 @@ import { icon, on, app, todayISO, addDays, fromISO, toISO } from '../util.js';
 import { clientById, doneFor, personalBests } from '../store.js';
 import { prepare, isPrepared, buildClientPdf, pdfFileName, sessionsInRange } from '../pdf.js';
 
+// Client notes, or a note on any exercise in their completed sessions.
+const clientHasNotes = (c) => !!c.notes || doneFor(c.id).some((s) => s.items.some((it) => it.note));
+
 const st = { clientId: null, history: true, pbs: true, notes: false, preset: '3m', from: '', to: '', status: 'loading' };
 
 const monthsAgo = (n) => {
@@ -43,7 +46,8 @@ function html() {
   const presets = [['4w', '4 weeks'], ['3m', '3 months'], ['6m', '6 months'], ['all', 'All time']]
     .map(([v, label]) => `<button type="button" class="seg-btn" data-act="expPreset" data-v="${v}" aria-pressed="${st.preset === v}">${label}</button>`)
     .join('');
-  const nothing = !st.history && !st.pbs && !(st.notes && c.notes);
+  const hasNotes = clientHasNotes(c);
+  const nothing = !st.history && !st.pbs && !(st.notes && hasNotes);
   const busy = st.status !== 'ready';
   const status =
     st.status === 'error'
@@ -70,7 +74,7 @@ function html() {
       }
     </div>
     <div class="export-opt">${toggle('pbs', 'Personal bests', pbCount ? `All-time best for ${pbCount} exercise${pbCount === 1 ? '' : 's'}` : 'None yet', st.pbs)}</div>
-    <div class="export-opt">${toggle('notes', 'Notes', c.notes ? 'Goals, injuries and anything else in their notes' : 'No notes for this client', st.notes && !!c.notes, !c.notes)}</div>
+    <div class="export-opt">${toggle('notes', 'Notes', hasNotes ? 'The client’s notes and any notes on exercises' : 'No notes for this client', st.notes && hasNotes, !hasNotes)}</div>
   </div>
   ${status}
   <div class="export-actions">
@@ -145,7 +149,7 @@ function download(blob, name) {
 on('click', 'expGo', (el) => {
   if (!isPrepared()) return;
   const c = clientById(st.clientId);
-  const opts = { history: st.history, pbs: st.pbs, notes: st.notes && !!c.notes, from: st.from, to: st.to };
+  const opts = { history: st.history, pbs: st.pbs, notes: st.notes && clientHasNotes(c), from: st.from, to: st.to };
   let blob;
   try {
     blob = buildClientPdf(c, opts);
