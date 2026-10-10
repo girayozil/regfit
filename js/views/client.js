@@ -1,11 +1,11 @@
 // Client profile: details, upcoming sessions, personal bests, past workouts.
 
 import { esc, icon, on, app, fullName, initials, tint, relDay, fmtShort, monShort, dayNum, fmtMonthYear, todayISO, addDays, fmtKg } from '../util.js';
-import { clientById, sessionsFor, doneFor, nextSession, personalBests, exName, itemSummary, totalSets, createSession, copyItems, sessionById, save, sessionEnded } from '../store.js';
+import { clientById, sessionsFor, doneFor, nextSession, personalBests, PB_CATEGORIES, exName, itemSummary, totalSets, createSession, copyItems, sessionById, save, sessionEnded } from '../store.js';
 
 import './export.js';
 
-const ui = { open: {} }; // expanded past session per client
+const ui = { open: {}, pbCat: 'heaviest' }; // open: expanded past session per client; pbCat: personal-best category shown
 
 const statTile = (label, value, unit, extra = '') =>
   `<div class="stat ${extra}"><dt>${label}</dt><dd>${value === '' || value == null ? '—' : esc(value)}${unit && value !== '' && value != null ? ` <span>${unit}</span>` : ''}</dd></div>`;
@@ -35,17 +35,29 @@ export function render(id) {
       </section>`
     : '';
 
-  const pbHtml = pbs.length
-    ? `<ul class="pb-list">${pbs
-        .map(
-          (p) => `<li>
-            <span class="pb-text"><span class="pb-name">${esc(p.name)}</span><span class="pb-date">Set ${esc(fmtShort(p.date))}</span></span>
-            ${p.isNew ? '<span class="pill pill-new">New</span>' : ''}
-            <span class="pb-val">${esc(p.display)}</span>
-          </li>`
-        )
-        .join('')}</ul>`
-    : `<p class="muted pad-y">Personal bests appear here after the first logged session.</p>`;
+  const cat = PB_CATEGORIES.find((c) => c.key === ui.pbCat) || PB_CATEGORIES[0];
+  const pbRows = pbs.filter((p) => p[cat.key]);
+  const pbTabs = PB_CATEGORIES.map(
+    (c) => `<button type="button" class="seg-btn" data-act="pbCat" data-v="${c.key}" aria-pressed="${c.key === cat.key}">${c.label}</button>`
+  ).join('');
+  const pbHtml = !pbs.length
+    ? `<p class="muted pad-y">Personal bests appear here after the first logged session.</p>`
+    : `<div class="seg seg-fill pb-tabs" role="group" aria-label="Personal best category">${pbTabs}</div>
+       <p class="pb-help">${esc(cat.help)}</p>
+       ${
+         pbRows.length
+           ? `<ul class="pb-list">${pbRows
+               .map((p) => {
+                 const r = p[cat.key];
+                 return `<li>
+                   <span class="pb-text"><span class="pb-name">${esc(p.name)}</span><span class="pb-date">${r.detail ? esc(r.detail) + ' · ' : ''}${esc(fmtShort(r.date))}</span></span>
+                   ${r.isNew ? '<span class="pill pill-new">New</span>' : ''}
+                   <span class="pb-val">${esc(r.display)}</span>
+                 </li>`;
+               })
+               .join('')}</ul>`
+           : `<p class="muted pad-y">No records in this category yet.</p>`
+       }`;
 
   const histHtml = done.length
     ? done
@@ -119,6 +131,11 @@ export function render(id) {
     </section>
   </div>`;
 }
+
+on('click', 'pbCat', (el) => {
+  ui.pbCat = el.dataset.v;
+  app.rerender();
+});
 
 on('click', 'toggleHist', (el) => {
   const { id, client } = el.dataset;

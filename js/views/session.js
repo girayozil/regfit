@@ -2,7 +2,7 @@
 // exercise rows with dropdowns, and logging the session as done.
 
 import { esc, icon, on, app, uid, fullName, initials, tint, relDay, fmtShort, todayISO, isTimed, parseNum, select, opt, minToTime } from '../util.js';
-import { db, sessionById, clientById, sessionsFor, sessionNumber, exById, lastFor, bestFor, personalBests, copyItems, deleteSession, save, REGION_NAME, isUniform, itemParts, totalSets, newSets, trackingOf } from '../store.js';
+import { db, sessionById, clientById, sessionsFor, sessionNumber, exById, lastFor, bestFor, personalBests, copyItems, deleteSession, save, REGION_NAME, PB_CATEGORIES, isUniform, itemParts, totalSets, newSets, trackingOf } from '../store.js';
 import { sessionStatus } from './today.js';
 
 const TIMES = Array.from({ length: (22 - 5) * 4 + 1 }, (_, i) => minToTime(5 * 60 + i * 15));
@@ -370,11 +370,12 @@ on('click', 'completeSession', (el) => {
   s.started = true;
   save();
   const after = personalBests(s.clientId);
+  // Exercises with a new record in any category (heaviest, best set, best session).
   const newPbs = after.filter((p) => {
     const b = before.find((x) => x.exId === p.exId);
-    return !b || b.display !== p.display;
+    return PB_CATEGORIES.some(({ key }) => p[key] && (!b || !b[key] || b[key].display !== p[key].display));
   }).length;
-  app.toast(newPbs ? `Logged · ${newPbs} new personal best${newPbs === 1 ? '' : 's'}` : 'Session logged');
+  app.toast(newPbs ? `Logged · personal bests in ${newPbs} exercise${newPbs === 1 ? '' : 's'}` : 'Session logged');
   app.rerender();
 });
 

@@ -6,7 +6,7 @@
 // (iOS rejects navigator.share after a slow await).
 
 import { fullName, fromISO, todayISO, fmtKg, repsLabel } from './util.js';
-import { doneFor, personalBests, exName, trackingOf, isUniform, totalSets } from './store.js';
+import { doneFor, personalBests, PB_CATEGORIES, exName, trackingOf, isUniform, totalSets } from './store.js';
 
 let ready = null;
 let fonts = null;
@@ -53,6 +53,7 @@ export const isPrepared = () => !!(fonts && window.jspdf);
 // ---------- data ----------
 
 const fmtDate = (iso) => fromISO(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+const fmtShortDate = (iso) => fromISO(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
 const fmtDay = (iso) => fromISO(iso).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
 
 export function sessionsInRange(clientId, from, to) {
@@ -193,7 +194,8 @@ export function buildClientPdf(client, opts) {
   // ---- summary tiles (training numbers only) ----
   if (opts.history) {
     const sets = sessions.reduce((n, s) => n + totalSets(s.items), 0);
-    const pbsInRange = pbs.filter((p) => p.date >= opts.from && p.date <= opts.to).length;
+    // Exercises with a record (any category) set within the range.
+    const pbsInRange = pbs.filter((p) => PB_CATEGORIES.some(({ key }) => p[key] && p[key].date >= opts.from && p[key].date <= opts.to)).length;
     const tiles = [
       ['Sessions', String(sessions.length)],
       ['Total sets', String(sets)],
@@ -223,18 +225,36 @@ export function buildClientPdf(client, opts) {
       doc.text('No personal bests yet.', M, y);
       y += 12;
     } else {
-      const xBest = M + W * 0.58;
-      colHead([['Exercise', M], ['Best', xBest], ['Date set', PAGE_W - M, 'right']]);
+      // Exercise name, then one column per category: value on top, detail + date beneath.
+      const nameW = W * 0.31;
+      const colW = (W - nameW) / 3;
+      const colX = PB_CATEGORIES.map((_, i) => M + nameW + i * colW);
+      colHead([['Exercise', M], ...PB_CATEGORIES.map((c, i) => [c.label, colX[i]])]);
       pbs.forEach((p) => {
-        ensure(9);
-        font('bold', 10.5);
-        doc.text(fit(p.name, xBest - M - 4), M, y);
-        doc.text(p.display, xBest, y);
-        font('normal', 9.5, C.muted);
-        doc.text(fmtDate(p.date), PAGE_W - M, y, { align: 'right' });
-        y += 3.5;
+        ensure(12);
+        font('bold', 10);
+        doc.text(fit(p.name, nameW - 4), M, y);
+        PB_CATEGORIES.forEach(({ key }, i) => {
+          const r = p[key];
+          if (!r) {
+            font('normal', 10, C.muted);
+            doc.text('—', colX[i], y);
+            return;
+          }
+          font('bold', 10);
+          doc.text(fit(r.display, colW - 3), colX[i], y);
+          font('normal', 7.5, C.muted);
+          doc.text(fit((r.detail ? r.detail + ' · ' : '') + fmtShortDate(r.date), colW - 3), colX[i], y + 4);
+        });
+        y += 6.5;
         rule(y);
         y += 5.5;
+      });
+      font('normal', 8, C.muted);
+      ensure(10);
+      PB_CATEGORIES.forEach((c) => {
+        doc.text(c.label + ': ' + c.help.charAt(0).toLowerCase() + c.help.slice(1) + '.', M, y);
+        y += 4;
       });
       y += 6;
     }

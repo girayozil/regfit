@@ -268,15 +268,23 @@ export function itemParts(it) {
 }
 
 // ---------- personal bests ----------
+//
+// Three categories per exercise:
+//   heaviest    — heaviest weight in a single set (ties: more reps)
+//   bestSet     — most weight × reps in a single set
+//   bestSession — most weight × reps summed over every set of the exercise in one session
+// Exercises tracked by reps or time use reps / seconds in place of weight × reps.
 
-const secs = (reps) => parseInt(reps, 10) || 0;
+export const PB_CATEGORIES = [
+  { key: 'heaviest', label: 'Heaviest', help: 'Heaviest weight in one set' },
+  { key: 'bestSet', label: 'Best set', help: 'Most weight × reps in one set' },
+  { key: 'bestSession', label: 'Best session', help: 'Most weight × reps across all sets in one session' },
+];
 
-// Comparable score for one set, by the exercise's tracking mode.
-function score(item, tracking) {
-  if (tracking === 'Time') return [secs(item.reps), 0];
-  if (tracking === 'Reps only') return [isTimed(item.reps) ? 0 : +item.reps || 0, 0];
-  return [+item.weight || 0, isTimed(item.reps) ? secs(item.reps) : +item.reps || 0];
-}
+const repsNum = (r) => (isTimed(r) ? 0 : +r || 0);
+const secsNum = (r) => (isTimed(r) ? parseInt(r, 10) || 0 : 0);
+const fmtNum = (n) => (Math.round(n * 10) / 10).toLocaleString('en-GB');
+const fmtSecs = (t) => (t < 120 ? t + ' s' : Math.floor(t / 60) + ' min' + (t % 60 ? ' ' + (t % 60) + ' s' : ''));
 const better = (a, b) => a[0] > b[0] || (a[0] === b[0] && a[1] > b[1]);
 
 // One set, e.g. "70 kg × 10", "12 reps", "60 s".
@@ -286,39 +294,76 @@ export function describe(item, tracking) {
   return (item.weight === '' || item.weight == null ? 'BW' : fmtKg(item.weight)) + ' × ' + repsLabel(item.reps);
 }
 
-// Returns [{exId, name, display, date, isNew}] — best per exercise across done sessions.
+// This exercise's best candidate per category within one session: { key: { sc, display, detail } }.
+function itemRecords(it, tracking) {
+  const out = {};
+  const take = (key, sc, display, detail = '') => {
+    if (sc[0] > 0 && (!out[key] || better(sc, out[key].sc))) out[key] = { sc, display, detail };
+  };
+  let total = 0;
+  it.sets.forEach((set) => {
+    const w = +set.weight || 0;
+    const r = repsNum(set.reps);
+    const t = secsNum(set.reps);
+    if (tracking === 'Weight × reps') {
+      take('heaviest', [w, r], fmtKg(w) + ' × ' + repsLabel(set.reps));
+      take('bestSet', [w * r, w], fmtNum(w * r) + ' kg', fmtKg(w) + ' × ' + r);
+      total += w * r;
+    } else if (tracking === 'Reps only') {
+      take('heaviest', [w, r], '+' + fmtKg(w) + ' × ' + r);
+      take('bestSet', [r, w], r + ' reps', w > 0 ? '+' + fmtKg(w) : '');
+      total += r;
+    } else {
+      take('heaviest', [w, t], '+' + fmtKg(w) + ' × ' + t + ' s');
+      take('bestSet', [t, w], fmtSecs(t), w > 0 ? '+' + fmtKg(w) : '');
+      total += t;
+    }
+  });
+  const n = it.sets.length + (it.sets.length === 1 ? ' set' : ' sets');
+  if (tracking === 'Weight × reps') take('bestSession', [total, 0], fmtNum(total) + ' kg', n);
+  else if (tracking === 'Reps only') take('bestSession', [total, 0], total + ' reps', n);
+  else take('bestSession', [total, 0], fmtSecs(total), n);
+  return out;
+}
+
+// Returns [{ exId, name, tracking, isNew, heaviest, bestSet, bestSession }], each category
+// { display, detail, date, isNew } or null when it doesn't apply (e.g. no weight ever used).
 export function personalBests(clientId) {
   const done = doneFor(clientId);
-  const best = {};
   const lastDate = done.length ? done[done.length - 1].date : null;
+  const best = {};
   done.forEach((s) => {
     s.items.forEach((it) => {
-      const tracking = trackingOf(it.exId);
-      it.sets.forEach((set) => {
-        const sc = score(set, tracking);
-        const cur = best[it.exId];
-        if (!cur || better(sc, cur.sc)) {
+      const recs = itemRecords(it, trackingOf(it.exId));
+      const b = (best[it.exId] = best[it.exId] || {});
+      Object.entries(recs).forEach(([key, rec]) => {
+        const cur = b[key];
+        if (!cur || better(rec.sc, cur.sc)) {
           // "improved" = beat a record from an earlier session (not just an earlier set today).
           const improved = !cur ? false : cur.date !== s.date ? true : cur.improved;
-          best[it.exId] = { exId: it.exId, sc, item: set, tracking, date: s.date, improved };
+          b[key] = { ...rec, date: s.date, improved };
         }
       });
     });
   });
-  return Object.values(best)
-    .map((b) => ({
-      exId: b.exId,
-      name: exName(b.exId),
-      display: describe(b.item, b.tracking),
-      date: b.date,
-      isNew: b.improved && b.date === lastDate,
-    }))
+  return Object.entries(best)
+    .map(([exId, b]) => {
+      const pb = { exId, name: exName(exId), tracking: trackingOf(exId) };
+      PB_CATEGORIES.forEach(({ key }) => {
+        const r = b[key];
+        pb[key] = r ? { display: r.display, detail: r.detail, date: r.date, isNew: r.improved && r.date === lastDate } : null;
+      });
+      pb.isNew = PB_CATEGORIES.some(({ key }) => pb[key] && pb[key].isNew);
+      return pb;
+    })
     .sort((a, b) => a.name.localeCompare(b.name));
 }
 
+// The single headline best for an exercise (shown in the session builder).
 export function bestFor(clientId, exId) {
   const pb = personalBests(clientId).find((p) => p.exId === exId);
-  return pb ? pb.display : null;
+  if (!pb) return null;
+  return (pb.heaviest || pb.bestSet || {}).display || null;
 }
 
 // Most recent logged item for this exercise, from a done session other than `session`.
