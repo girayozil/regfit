@@ -116,8 +116,6 @@ h1, h2, p { margin: 0; }
   .nav-link .nav-label { line-height: 1.15; }
   .nav-link[data-nav="library"] .nav-label { font-size: 0; }
   .nav-link[data-nav="library"] .nav-label::after { content: 'Library'; font-size: 11px; }
-  .nav-link[data-nav="settings"] .nav-label { font-size: 0; }
-  .nav-link[data-nav="settings"] .nav-label::after { content: 'Settings'; font-size: 11px; }
   .nav-badge { position: absolute; top: 4px; right: 8px; margin: 0; padding: 1px 6px; font-size: 10px; }
   .side-btn { height: 52px; flex-direction: column; gap: 2px; font-size: 10px; padding: 0 2px; }
   .side-btn .nav-label { font-size: 10px; line-height: 1.1; }

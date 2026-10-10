@@ -6,7 +6,7 @@ import { db, replaceData, demoData, emptyData, isValidBackup } from '../store.js
 export function render() {
   const done = db.sessions.filter((s) => s.status === 'done').length;
   return `
-  <header class="page-head"><div><div class="eyebrow">RegFit</div><h1 class="page-title">Settings &amp; backup</h1></div></header>
+  <header class="page-head"><div><div class="eyebrow">RegFit</div><h1 class="page-title">Settings</h1></div></header>
   <section class="card settings-card">
     <div class="card-head"><h2>Your data</h2></div>
     <p class="muted">Everything is saved on <strong>this device</strong>, in this browser. Other devices won’t see it. Export a backup regularly, and use it to move data to another device.</p>
