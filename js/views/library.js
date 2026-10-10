@@ -4,7 +4,7 @@
 import { esc, icon, on, app, uid, isWide, select, opt } from '../util.js';
 import { db, exById, usageCount, save, MUSCLES, REGION_NAME, EQUIPMENT, TRACKING } from '../store.js';
 
-const ui = { region: 'All', muscle: null, q: '' };
+const ui = { region: 'All', muscle: null, q: '', draft: null }; // draft: unsaved new exercise
 const TAG = { Upper: 'tag-upper', Lower: 'tag-lower', Core: 'tag-core' };
 
 function filtered() {
@@ -28,15 +28,17 @@ function cards(selId) {
     .join('');
 }
 
+// `e` is a library exercise, or the unsaved draft (id "new") for New exercise / Duplicate.
 function editor(e, standalone) {
   if (!e) {
     return `<aside class="card editor editor-empty" aria-label="Edit exercise">
       <span class="choice-icon">${icon.dumbbell(22)}</span>
       <p class="empty-title">Select an exercise</p>
-      <p class="muted">Pick one from the list to edit, duplicate or delete it.</p>
+      <p class="muted">Pick one from the list to edit it.</p>
     </aside>`;
   }
-  const used = usageCount(e.id);
+  const isDraft = e.id === 'new';
+  const used = isDraft ? 0 : usageCount(e.id);
   const regionSeg = ['Upper', 'Lower', 'Core']
     .map((r) => `<label class="seg-radio"><input type="radio" name="ex-region" value="${r}" data-change="exRegion" data-id="${e.id}"${e.region === r ? ' checked' : ''}><span>${REGION_NAME[r]}</span></label>`)
     .join('');
@@ -44,9 +46,22 @@ function editor(e, standalone) {
   const muscleChips = muscleList
     .map((m) => `<button type="button" class="chip${e.muscles.includes(m) ? ' chip-on' : ''}" aria-pressed="${e.muscles.includes(m)}" data-act="toggleMuscle" data-id="${e.id}" data-m="${esc(m)}">${esc(m)}</button>`)
     .join('');
-  return `<aside class="card editor${standalone ? ' editor-page' : ''}" aria-label="Edit exercise">
-    <div class="card-head"><h2 class="eyebrow">Edit exercise</h2><span class="muted small">${used ? 'Used in ' + used + ' session' + (used === 1 ? '' : 's') : 'Not used yet'}</span></div>
-    <label class="field-label">Name<input class="field" value="${esc(e.name)}" data-input="exName" data-change="exNameDone" data-id="${e.id}" autocapitalize="words"></label>
+  const head = isDraft
+    ? `<div class="card-head"><h2 class="eyebrow">${e.copyOf ? 'Duplicate exercise' : 'New exercise'}</h2></div>`
+    : `<div class="card-head">
+        <h2 class="eyebrow">Edit exercise</h2>
+        <button type="button" class="btn-icon sm" data-act="dupEx" data-id="${e.id}" aria-label="Duplicate exercise" title="Duplicate">${icon.copy(18)}</button>
+        <button type="button" class="btn-icon sm danger" data-act="delEx" data-id="${e.id}" aria-label="Delete exercise" title="${used ? 'Used in sessions — can’t delete' : 'Delete'}"${used ? ' disabled' : ''}>${icon.trash(18)}</button>
+      </div>`;
+  const foot = isDraft
+    ? `<div class="editor-actions">
+        <button type="button" class="btn btn-outline" data-act="cancelDraft">Cancel</button>
+        <button type="button" class="btn btn-dark" data-act="addDraft">${icon.check(16)}Add exercise</button>
+      </div>`
+    : `<p class="muted small">${used ? 'Used in ' + used + ' session' + (used === 1 ? '' : 's') + ' · ' : ''}Changes save automatically.</p>`;
+  return `<aside class="card editor${standalone ? ' editor-page' : ''}" aria-label="${isDraft ? 'New exercise' : 'Edit exercise'}">
+    ${head}
+    <label class="field-label">Name<input class="field" value="${esc(e.name)}" placeholder="e.g. Cable Lateral Raise" data-input="exName" data-change="exNameDone" data-id="${e.id}" autocapitalize="words"></label>
     <div class="field-label"><span id="region-label">Region</span><div class="seg seg-fill" role="radiogroup" aria-labelledby="region-label">${regionSeg}</div></div>
     <div class="field-label"><span>Muscle groups</span><div class="chips">${muscleChips}</div></div>
     <div class="form-grid tight">
@@ -54,21 +69,21 @@ function editor(e, standalone) {
       <label class="field-label">Track by${select(`data-change="exField" data-f="tracking" data-id="${e.id}"`, TRACKING.map((x) => opt(x, x, e.tracking)).join(''))}</label>
     </div>
     <label class="field-label">Coaching cues<textarea class="field" rows="3" placeholder="e.g. Shoulder blades back, control the lowering" data-input="exCues" data-id="${e.id}">${esc(e.cues || '')}</textarea></label>
-    <div class="editor-actions">
-      <button type="button" class="btn btn-outline" data-act="dupEx" data-id="${e.id}">${icon.copy(16)}Duplicate</button>
-      <button type="button" class="btn btn-ghost danger" data-act="delEx" data-id="${e.id}"${used ? ' disabled title="Used in sessions — can’t delete"' : ''}>${icon.trash(16)}Delete</button>
-    </div>
-    <p class="muted small">Changes save automatically.</p>
+    ${foot}
   </aside>`;
 }
 
+const blankDraft = () => ({ id: 'new', name: '', region: ui.region === 'All' ? 'Upper' : ui.region, muscles: [], equipment: 'Dumbbells', tracking: 'Weight × reps', cues: '' });
+
 export function render(selId) {
-  const sel = selId ? exById(selId) : null;
+  if (selId === 'new' && !ui.draft) ui.draft = blankDraft();
+  if (selId !== 'new') ui.draft = null;
+  const sel = selId === 'new' ? ui.draft : selId ? exById(selId) : null;
   const wide = isWide();
 
   if (sel && !wide) {
     return `<a class="back" href="#/library">${icon.left(16)}Exercise library</a>
-      <h1 class="page-title">${esc(sel.name)}</h1>
+      <h1 class="page-title">${sel.id === 'new' ? (sel.copyOf ? 'Duplicate exercise' : 'New exercise') : esc(sel.name)}</h1>
       ${editor(sel, true)}`;
   }
 
@@ -118,66 +133,96 @@ on('input', 'libQ', (el) => {
 
 // ---------- editing ----------
 
-const exOf = (el) => exById(el.dataset.id);
+// The exercise a control edits: the unsaved draft, or a library exercise (saved straight away).
+const exOf = (el) => (el.dataset.id === 'new' ? ui.draft : exById(el.dataset.id));
+const commit = (e) => {
+  if (e.id !== 'new') save();
+};
 
 on('input', 'exName', (el) => {
   const e = exOf(el);
   e.name = el.value;
-  save();
+  commit(e);
   const label = document.querySelector(`[data-ex-name="${e.id}"]`);
   if (label) label.textContent = el.value;
 });
 on('change', 'exNameDone', (el) => {
   const e = exOf(el);
-  if (!e.name.trim()) e.name = 'Untitled exercise';
-  e.name = e.name.trim();
+  if (e.id === 'new') return;
+  e.name = e.name.trim() || 'Untitled exercise';
   save();
   app.rerender();
 });
 on('change', 'exRegion', (el) => {
-  exOf(el).region = el.value;
-  save();
+  const e = exOf(el);
+  e.region = el.value;
+  commit(e);
   app.rerender();
 });
 on('click', 'toggleMuscle', (el) => {
   const e = exOf(el);
   const m = el.dataset.m;
   e.muscles = e.muscles.includes(m) ? e.muscles.filter((x) => x !== m) : [...e.muscles, m];
-  save();
+  commit(e);
   app.rerender();
 });
 on('change', 'exField', (el) => {
-  exOf(el)[el.dataset.f] = el.value;
-  save();
+  const e = exOf(el);
+  e[el.dataset.f] = el.value;
+  commit(e);
   app.rerender();
 });
 on('input', 'exCues', (el) => {
-  exOf(el).cues = el.value;
-  save();
+  const e = exOf(el);
+  e.cues = el.value;
+  commit(e);
+});
+
+// New exercise and Duplicate open an unsaved draft; nothing is added until "Add exercise".
+on('click', 'newEx', () => {
+  ui.draft = blankDraft();
+  app.go('#/library/new');
+  if (location.hash === '#/library/new') app.rerender();
+  setTimeout(() => {
+    const input = document.querySelector('[data-input="exName"]');
+    if (input) input.focus();
+  }, 50);
 });
 
 on('click', 'dupEx', (el) => {
-  const e = exOf(el);
-  const copy = { ...e, id: uid('ex'), name: e.name + ' (copy)', muscles: [...e.muscles] };
-  db.exercises.push(copy);
-  save();
-  ui.q = '';
-  app.toast('Duplicated');
-  app.go('#/library/' + copy.id);
+  const e = exById(el.dataset.id);
+  ui.draft = { ...e, id: 'new', copyOf: e.id, name: e.name + ' (copy)', muscles: [...e.muscles] };
+  app.go('#/library/new');
+  if (location.hash === '#/library/new') app.rerender();
 });
 
-on('click', 'newEx', () => {
-  const region = ui.region === 'All' ? 'Upper' : ui.region;
-  const e = { id: uid('ex'), name: 'New exercise', region, muscles: [], equipment: 'Dumbbells', tracking: 'Weight × reps', cues: '' };
+on('click', 'cancelDraft', () => {
+  ui.draft = null;
+  app.go('#/library');
+});
+
+on('click', 'addDraft', () => {
+  const d = ui.draft;
+  const name = (d.name || '').trim();
+  if (!name) {
+    app.toast('Give the exercise a name');
+    const input = document.querySelector('[data-input="exName"]');
+    if (input) input.focus();
+    return;
+  }
+  if (db.exercises.some((x) => x.name.toLowerCase() === name.toLowerCase())) {
+    app.toast('An exercise with that name already exists');
+    return;
+  }
+  const { copyOf, ...fields } = d;
+  const e = { ...fields, id: uid('ex'), name, muscles: [...d.muscles] };
   db.exercises.push(e);
   save();
+  ui.draft = null;
   ui.q = '';
   ui.muscle = null;
+  app.toast('Exercise added');
   app.go('#/library/' + e.id);
-  setTimeout(() => {
-    const input = document.querySelector('[data-input="exName"]');
-    if (input) input.select();
-  }, 50);
 });
 
 on('click', 'delEx', (el) => {

@@ -636,6 +636,10 @@ button.choice:hover { border-color: var(--ink); }
 .editor-empty { align-items: center; text-align: center; justify-content: center; min-height: 300px; gap: 8px; }
 .editor-actions { display: flex; gap: 8px; }
 .editor-actions .btn { flex: 1; }
+.editor .card-head { margin-bottom: 0; }
+.editor .card-head .btn-icon.sm { width: 40px; height: 40px; }
+.btn-icon.sm.danger { color: var(--danger); }
+.btn-icon.sm.danger:disabled { color: var(--muted); }
 
 /* ---------- Settings ---------- */
 
