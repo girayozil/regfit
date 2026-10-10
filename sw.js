@@ -1,6 +1,6 @@
 // Offline support: network-first for the app's own files, falling back to the cache.
 // Bump VERSION when shipping changes that must replace cached files.
-const VERSION = 'regfit-v5';
+const VERSION = 'regfit-v6';
 const SHELL = [
   './',
   'index.html',
@@ -25,7 +25,13 @@ const SHELL = [
 ];
 
 self.addEventListener('install', (e) => {
-  e.waitUntil(caches.open(VERSION).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()));
+  // cache: 'reload' skips the browser's HTTP cache so a new version never precaches stale files.
+  e.waitUntil(
+    caches
+      .open(VERSION)
+      .then((c) => c.addAll(SHELL.map((u) => new Request(u, { cache: 'reload' }))))
+      .then(() => self.skipWaiting())
+  );
 });
 
 self.addEventListener('activate', (e) => {
@@ -40,8 +46,11 @@ self.addEventListener('fetch', (e) => {
   const url = new URL(req.url);
   const isFont = url.hostname === 'fonts.googleapis.com' || url.hostname === 'fonts.gstatic.com';
   if (url.origin !== self.location.origin && !isFont) return;
+  // Own files: revalidate with the server every time (GitHub Pages lets browsers reuse files for
+  // 10 minutes, which can mix old and new modules after a deploy). Cheap: unchanged files are a 304.
+  const network = isFont ? fetch(req) : fetch(new Request(req.url, { cache: 'no-cache', credentials: 'same-origin' }));
   e.respondWith(
-    fetch(req)
+    network
       .then((res) => {
         if (res && (res.ok || res.type === 'opaque')) {
           const copy = res.clone();
