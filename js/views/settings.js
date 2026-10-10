@@ -1,6 +1,6 @@
-// Settings: backup/restore, demo data, install tip.
+// Settings: account & sync, backup/restore, demo data, install tip.
 
-import { icon, on, app, todayISO } from '../util.js';
+import { esc, icon, on, app, todayISO } from '../util.js';
 import { db, replaceData, demoData, emptyData, isValidBackup } from '../store.js';
 
 export function render() {
@@ -8,8 +8,16 @@ export function render() {
   return `
   <header class="page-head"><div><div class="eyebrow">RegFit</div><h1 class="page-title">Settings</h1></div></header>
   <section class="card settings-card">
+    <div class="card-head"><h2>Account</h2></div>
+    <p>Signed in as <strong>${esc((app.account && app.account.email) || '')}</strong></p>
+    <p class="muted small sync-line"><span class="sync-dot"></span><span id="sync-status">${esc(app.syncLabel ? app.syncLabel() : '')}</span></p>
+    <div class="settings-actions">
+      <button type="button" class="btn btn-outline" data-act="signOut">Sign out</button>
+    </div>
+  </section>
+  <section class="card settings-card">
     <div class="card-head"><h2>Your data</h2></div>
-    <p class="muted">Everything is saved on <strong>this device</strong>, in this browser. Other devices won’t see it. Export a backup regularly, and use it to move data to another device.</p>
+    <p class="muted">Saved to your account and synced to every device you sign in on. It also works offline — changes sync when you’re back online. A backup file is a good extra safety net.</p>
     <dl class="stats stats-3">
       <div class="stat"><dt>Clients</dt><dd>${db.clients.length}</dd></div>
       <div class="stat"><dt>Sessions logged</dt><dd>${done}</dd></div>
@@ -27,17 +35,19 @@ export function render() {
       <li>Tap the <strong>Share</strong> button, then <strong>Add to Home Screen</strong>.</li>
       <li>Open RegFit from the home screen — it runs full-screen and works offline.</li>
     </ol>
-    <p class="muted small">Installing also stops Safari from clearing the saved data after a few weeks of not opening the site.</p>
+    <p class="muted small">You’ll sign in once on each device.</p>
   </section>
   <section class="card settings-card">
     <div class="card-head"><h2>Start over</h2></div>
-    <p class="muted">The demo clients and sessions are there to try things out. Clear them when you’re ready to use RegFit for real.</p>
+    <p class="muted">These change your account on every device. Export a backup first if you might need the current data.</p>
     <div class="settings-actions">
       <button type="button" class="btn btn-outline danger" data-act="eraseData">${icon.trash(16)}Erase clients &amp; sessions</button>
       <button type="button" class="btn btn-ghost" data-act="loadDemo">Load demo data</button>
     </div>
   </section>`;
 }
+
+on('click', 'signOut', () => app.signOut());
 
 on('click', 'exportData', () => {
   const blob = new Blob([JSON.stringify(db, null, 2)], { type: 'application/json' });
@@ -59,7 +69,7 @@ on('change', 'importData', (el) => {
     try {
       const d = JSON.parse(reader.result);
       if (!isValidBackup(d)) throw new Error('bad');
-      if (!confirm(`Replace all data on this device with the backup (${d.clients.length} clients, ${d.sessions.length} sessions)?`)) return;
+      if (!confirm(`Replace all data in your account, on every device, with the backup (${d.clients.length} clients, ${d.sessions.length} sessions)?`)) return;
       replaceData(d);
       app.toast('Backup restored');
       app.rerender();
@@ -72,14 +82,14 @@ on('change', 'importData', (el) => {
 });
 
 on('click', 'eraseData', () => {
-  if (!confirm('Erase all clients and sessions on this device? The exercise library is kept as-is. Export a backup first if you might need them.')) return;
+  if (!confirm('Erase all clients and sessions from your account, on every device? The exercise library is kept. Export a backup first if you might need them.')) return;
   replaceData({ ...emptyData(), exercises: db.exercises });
   app.toast('Clients and sessions erased');
   app.rerender();
 });
 
 on('click', 'loadDemo', () => {
-  if ((db.clients.length || db.sessions.length) && !confirm('Replace everything on this device with demo data?')) return;
+  if ((db.clients.length || db.sessions.length) && !confirm('Replace everything in your account, on every device, with demo data?')) return;
   replaceData(demoData());
   app.toast('Demo data loaded');
   app.rerender();

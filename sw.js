@@ -1,6 +1,6 @@
 // Offline support: network-first for the app's own files, falling back to the cache.
 // Bump VERSION when shipping changes that must replace cached files.
-const VERSION = 'regfit-v11';
+const VERSION = 'regfit-v12';
 const SHELL = [
   './',
   'index.html',
@@ -17,6 +17,8 @@ const SHELL = [
   'js/views/settings.js',
   'js/views/export.js',
   'js/views/chart.js',
+  'js/views/auth.js',
+  'js/cloud.js',
   'js/pdf.js',
   'vendor/jspdf.umd.min.js',
   'fonts/Manrope-Medium.ttf',
@@ -46,10 +48,12 @@ self.addEventListener('fetch', (e) => {
   if (req.method !== 'GET') return;
   const url = new URL(req.url);
   const isFont = url.hostname === 'fonts.googleapis.com' || url.hostname === 'fonts.gstatic.com';
-  if (url.origin !== self.location.origin && !isFont) return;
+  // Firebase's code (not its data traffic) is cached so the app can start offline.
+  const isFirebaseLib = url.hostname === 'www.gstatic.com' && url.pathname.startsWith('/firebasejs/');
+  if (url.origin !== self.location.origin && !isFont && !isFirebaseLib) return;
   // Own files: revalidate with the server every time (GitHub Pages lets browsers reuse files for
   // 10 minutes, which can mix old and new modules after a deploy). Cheap: unchanged files are a 304.
-  const network = isFont ? fetch(req) : fetch(new Request(req.url, { cache: 'no-cache', credentials: 'same-origin' }));
+  const network = isFont || isFirebaseLib ? fetch(req) : fetch(new Request(req.url, { cache: 'no-cache', credentials: 'same-origin' }));
   e.respondWith(
     network
       .then((res) => {

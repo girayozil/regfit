@@ -719,6 +719,37 @@ button.choice:hover { border-color: var(--ink); }
   .profile-head .head-actions .btn-dark { flex-basis: 100%; }
 }
 
+/* ---------- Sign-in, setup, sync ---------- */
+
+body.signed-out .sidebar, body.signed-out .tabbar { display: none; }
+body.signed-out .view { margin-left: 0; max-width: none; }
+.auth-wrap { min-height: 80vh; display: grid; place-items: center; padding: 24px 0; }
+.auth-card { width: min(400px, 100%); background: var(--surface); border: 1px solid var(--line); border-radius: 22px; padding: 28px 24px; display: flex; flex-direction: column; gap: 14px; }
+.auth-card .page-title { font-size: 28px; margin: 0 0 4px; }
+.auth-brand { display: flex; align-items: center; gap: 10px; font-weight: 800; font-size: 19px; letter-spacing: -0.03em; }
+.auth-error { color: var(--danger); font-size: 14px; font-weight: 700; }
+
+.setup-options { display: flex; flex-direction: column; gap: 8px; }
+.setup-opt { text-align: left; display: flex; flex-direction: column; gap: 2px; padding: 14px 16px; border-radius: 14px; border: 1.5px solid var(--line); background: var(--surface); color: var(--ink); min-height: 64px; }
+.setup-opt:hover { border-color: var(--ink); }
+.setup-opt strong { font-size: 15px; font-weight: 800; }
+.setup-opt span { font-size: 13px; font-weight: 600; color: var(--muted); }
+.setup-opt.primary { background: var(--ink); border-color: var(--ink); color: #fff; }
+.setup-opt.primary span { color: var(--side-text); }
+
+.sync-line { display: flex; align-items: center; gap: 8px; }
+.sync-dot { width: 8px; height: 8px; border-radius: 50%; background: #3B8A3E; flex-shrink: 0; }
+body.is-offline .sync-dot { background: var(--warn); }
+
+.offline-bar {
+  display: none; position: fixed; left: 50%; transform: translateX(-50%); z-index: 30;
+  bottom: calc(16px + var(--tabbar-h) + env(safe-area-inset-bottom));
+  background: var(--warn-bg); color: var(--warn); border: 1px solid #F0C9A6; border-radius: 999px;
+  padding: 8px 14px; font-size: 13px; font-weight: 700; white-space: nowrap; max-width: calc(100% - 32px); overflow: hidden; text-overflow: ellipsis;
+}
+body.is-offline:not(.signed-out) .offline-bar { display: block; }
+body.is-offline .action-bar { bottom: calc(60px + var(--tabbar-h) + env(safe-area-inset-bottom)); }
+
 /* ---------- modal & toast ---------- */
 
 .modal-backdrop {

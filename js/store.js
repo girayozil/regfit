@@ -254,39 +254,138 @@ export function emptyData() {
   return { version: 2, exercises: libraryExercises(), clients: [], sessions: [] };
 }
 
-// ---------- persistence ----------
+// ---------- persistence & sync ----------
+//
+// The app works on the in-memory `db`. Every save() writes a local cache (instant start-up)
+// and, when signed in, sends the records that changed to Firestore (debounced).
+// Changes made on another device arrive through applyRemote().
 
-export let db = load();
+const SYNCED = ['clients', 'sessions', 'exercises'];
+export let db = emptyData();
+let cacheKey = KEY;
+let pushFn = null; // set while signed in: (ops) => Promise
+let synced = { clients: new Map(), sessions: new Map(), exercises: new Map() }; // id -> JSON last seen in the cloud
+let pushTimer = null;
 
-function load() {
+// Key-order-independent JSON, so the same record always compares equal.
+const stable = (v) =>
+  Array.isArray(v) ? '[' + v.map(stable).join(',') + ']' : v && typeof v === 'object' ? '{' + Object.keys(v).sort().map((k) => JSON.stringify(k) + ':' + stable(v[k])).join(',') + '}' : JSON.stringify(v ?? null);
+
+function readCache(key) {
   try {
-    const raw = localStorage.getItem(KEY);
-    if (raw) {
-      const d = JSON.parse(raw);
-      if (isValidBackup(d)) {
-        migrate(d);
-        persist(d);
-        return d;
-      }
+    const d = JSON.parse(localStorage.getItem(key));
+    if (isValidBackup(d)) {
+      migrate(d);
+      return d;
     }
   } catch (e) {
-    /* fall through to demo data */
+    /* no usable cache */
   }
-  const d = demoData();
-  persist(d);
-  return d;
+  return null;
 }
 
 function persist(d) {
   try {
-    localStorage.setItem(KEY, JSON.stringify(d));
+    localStorage.setItem(cacheKey, JSON.stringify(d));
     return true;
   } catch (e) {
     return false;
   }
 }
 
-export const save = () => persist(db);
+// Data saved on this device before accounts existed (offered for upload at first sign-in).
+export const localOnlyData = () => readCache(KEY);
+
+// Signed in: start from this account's cached copy; the first snapshot from Firestore replaces it.
+export function startSync(uid, push) {
+  cacheKey = 'regfit.cloud.' + uid;
+  pushFn = push;
+  db = readCache(cacheKey) || emptyData();
+  synced = { clients: new Map(), sessions: new Map(), exercises: new Map() };
+  SYNCED.forEach((name) => db[name].forEach((x) => synced[name].set(x.id, stable(x))));
+}
+
+export function stopSync(uid) {
+  pushFn = null;
+  clearTimeout(pushTimer);
+  try {
+    localStorage.removeItem('regfit.cloud.' + uid);
+  } catch (e) {
+    /* ignore */
+  }
+  cacheKey = KEY;
+  db = emptyData();
+}
+
+export function save() {
+  persist(db);
+  if (!pushFn) return;
+  clearTimeout(pushTimer);
+  pushTimer = setTimeout(flush, 400);
+}
+
+// Send every record that differs from what the cloud last had (new, changed or deleted).
+export function flush() {
+  clearTimeout(pushTimer);
+  if (!pushFn) return null;
+  const ops = [];
+  SYNCED.forEach((name) => {
+    const seen = new Set();
+    db[name].forEach((x) => {
+      seen.add(x.id);
+      const json = stable(x);
+      if (synced[name].get(x.id) !== json) {
+        synced[name].set(x.id, json);
+        ops.push({ name, id: x.id, data: JSON.parse(JSON.stringify(x)) });
+      }
+    });
+    [...synced[name].keys()].forEach((id) => {
+      if (!seen.has(id)) {
+        synced[name].delete(id);
+        ops.push({ name, id, data: null });
+      }
+    });
+  });
+  return ops.length ? pushFn(ops) : null;
+}
+
+// Treat everything currently in memory as not yet uploaded (account setup).
+export function markAllUnsynced() {
+  synced = { clients: new Map(), sessions: new Map(), exercises: new Map() };
+}
+
+// Changes from Firestore. On the first snapshot the collection is replaced wholesale.
+// Returns true when something visible changed.
+export function applyRemote(name, changes, first) {
+  let changed = false;
+  if (first) {
+    const next = changes.map((c) => c.data);
+    if (stable(next.map((x) => x.id).sort()) !== stable(db[name].map((x) => x.id).sort()) || next.some((x) => synced[name].get(x.id) !== stable(x))) changed = true;
+    db[name] = next;
+    synced[name] = new Map(next.map((x) => [x.id, stable(x)]));
+  } else {
+    changes.forEach(({ type, id, data }) => {
+      const i = db[name].findIndex((x) => x.id === id);
+      if (type === 'removed') {
+        if (i !== -1) {
+          db[name].splice(i, 1);
+          changed = true;
+        }
+        synced[name].delete(id);
+        return;
+      }
+      const json = stable(data);
+      if (synced[name].get(id) === json && i !== -1 && stable(db[name][i]) === json) return; // our own write echoing back
+      synced[name].set(id, json);
+      if (i === -1) db[name].push(data);
+      else db[name][i] = data;
+      changed = true;
+    });
+  }
+  if (name === 'sessions' && changed) migrate(db);
+  persist(db);
+  return changed;
+}
 
 export function replaceData(d) {
   migrate(d);

@@ -1,7 +1,8 @@
-// App shell: hash router, event delegation, toast + modal, service worker.
+// App shell: sign-in gate, hash router, event delegation, toast + modal, cloud sync, service worker.
 
 import { app, handlers, icon, isWide, todayISO } from './util.js';
-import { sessionsOn } from './store.js';
+import { sessionsOn, startSync, stopSync, applyRemote, flush, markAllUnsynced, replaceData, localOnlyData, demoData, emptyData, db } from './store.js';
+import * as auth from './views/auth.js';
 import * as today from './views/today.js';
 import * as clients from './views/clients.js';
 import * as client from './views/client.js';
@@ -27,7 +28,20 @@ function currentPath() {
   return decodeURIComponent(location.hash.replace(/^#/, '')) || '/today';
 }
 
+// 'loading' until Firebase says who is signed in, then 'out' or 'in'.
+let authState = 'loading';
+
 function render() {
+  document.body.classList.toggle('signed-out', authState !== 'in');
+  if (authState === 'loading') {
+    viewEl.innerHTML = '<div class="auth-wrap"><p class="muted">Loading…</p></div>';
+    return;
+  }
+  if (authState === 'out') {
+    viewEl.innerHTML = auth.renderSignIn();
+    document.title = 'Sign in · RegFit';
+    return;
+  }
   const path = currentPath();
   let html = '';
   let nav = 'today';
@@ -94,7 +108,7 @@ for (const type of ['change', 'input']) {
 }
 
 document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') closeModal();
+  if (e.key === 'Escape' && !modalLocked) closeModal();
 });
 
 // ---------- toast & modal ----------
@@ -110,15 +124,19 @@ app.toast = (msg) => {
 
 const modalRoot = document.getElementById('modal-root');
 let lastFocus = null;
-app.modal = (html, label) => {
+let modalLocked = false;
+// locked: no closing by backdrop tap or Escape (the dialog must be answered).
+app.modal = (html, label, locked = false) => {
   lastFocus = document.activeElement;
-  modalRoot.innerHTML = `<div class="modal-backdrop" data-act="closeModal"><div class="modal" role="dialog" aria-modal="true" aria-label="${label}" data-act="noop">${html}</div></div>`;
+  modalLocked = locked;
+  modalRoot.innerHTML = `<div class="modal-backdrop"${locked ? '' : ' data-act="closeModal"'}><div class="modal" role="dialog" aria-modal="true" aria-label="${label}" data-act="noop">${html}</div></div>`;
   document.body.classList.add('modal-open');
   const first = modalRoot.querySelector('input, button, a');
   if (first && isWide()) first.focus();
 };
 function closeModal() {
   if (!modalRoot.innerHTML) return;
+  modalLocked = false;
   modalRoot.innerHTML = '';
   document.body.classList.remove('modal-open');
   if (lastFocus && lastFocus.focus) lastFocus.focus();
@@ -136,10 +154,129 @@ document.querySelectorAll('[data-icon]').forEach((el) => {
 });
 document.querySelector('.brand-mark').innerHTML = icon.dumbbell(18, 2.4);
 
-// ---------- go ----------
+// ---------- cloud: sign-in, setup, sync ----------
 
-lastPath = currentPath();
-render();
+const sync = { pending: 0, uid: null, unsubscribe: null };
+app.syncState = () => ({ pending: sync.pending, online: navigator.onLine, email: app.account && app.account.email });
+
+const updateSyncUI = () => {
+  const el = document.getElementById('sync-status');
+  if (el) el.textContent = syncLabel();
+};
+function syncLabel() {
+  if (!navigator.onLine) return sync.pending ? 'Offline — changes are saved here and will sync when you’re back online' : 'Offline — showing the copy saved on this device';
+  return sync.pending ? 'Syncing…' : 'All changes synced';
+}
+app.syncLabel = syncLabel;
+
+function push(ops) {
+  sync.pending++;
+  updateSyncUI();
+  return app.cloud
+    .write(sync.uid, ops)
+    .catch((e) => {
+      console.error(e);
+      app.toast('Couldn’t save to your account. Check the connection.');
+    })
+    .finally(() => {
+      sync.pending--;
+      updateSyncUI();
+    });
+}
+
+// Re-render for changes from another device, but never under the user's fingers.
+let deferred = false;
+function renderSoon() {
+  const a = document.activeElement;
+  if (a && viewEl.contains(a) && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName)) deferred = true;
+  else render();
+}
+viewEl.addEventListener('focusout', () => {
+  setTimeout(() => {
+    if (deferred && !(document.activeElement && /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName))) {
+      deferred = false;
+      render();
+    }
+  }, 0);
+});
+
+async function signedIn(user) {
+  app.account = { email: user.email, uid: user.uid };
+  sync.uid = user.uid;
+  startSync(user.uid, push);
+  authState = 'in';
+  render();
+
+  const exists = await app.cloud.accountExists(user.uid);
+  if (exists === false) {
+    const choice = await auth.askSetup(localOnlyData());
+    if (choice === 'upload') replaceData(localOnlyData());
+    else if (choice === 'demo') replaceData(demoData());
+    else replaceData(emptyData());
+    markAllUnsynced();
+    app.toast('Setting up your account…');
+    await flush();
+    await app.cloud.markAccount(user.uid);
+    app.toast('Your account is ready');
+    render();
+  } else if (exists === null && !db.clients.length && !db.sessions.length) {
+    app.toast('Offline — connect to the internet to load your data');
+  }
+  sync.unsubscribe = app.cloud.subscribe(user.uid, (name, changes, first) => {
+    if (applyRemote(name, changes, first)) renderSoon();
+  });
+}
+
+app.signOut = async () => {
+  await flush();
+  if (sync.pending && !confirm('Some changes haven’t reached your account yet (no connection?). Sign out anyway and lose them?')) return;
+  if (sync.unsubscribe) sync.unsubscribe();
+  stopSync(sync.uid);
+  await app.cloud.signOutAndClear();
+  location.hash = '#/today';
+  location.reload();
+};
+
+// Make sure pending edits are sent before the app is backgrounded or closed.
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') flush();
+});
+window.addEventListener('pagehide', () => flush());
+window.addEventListener('online', () => {
+  document.body.classList.remove('is-offline');
+  updateSyncUI();
+});
+window.addEventListener('offline', () => {
+  document.body.classList.add('is-offline');
+  updateSyncUI();
+});
+document.body.classList.toggle('is-offline', !navigator.onLine);
+
+async function boot() {
+  lastPath = currentPath();
+  render();
+  try {
+    app.cloud = await import('./cloud.js');
+    await app.cloud.init();
+  } catch (e) {
+    console.error(e);
+    viewEl.innerHTML = '<div class="auth-wrap"><div class="auth-card"><h1 class="page-title">Can’t reach RegFit</h1><p class="muted">Connect to the internet and try again.</p><button type="button" class="btn btn-dark wide" onclick="location.reload()">Try again</button></div></div>';
+    return;
+  }
+  let first = true;
+  app.cloud.onAuth((user) => {
+    if (user) {
+      if (first || !app.account) signedIn(user);
+    } else {
+      authState = 'out';
+      auth.resetSignInForm();
+      render();
+    }
+    first = false;
+  });
+}
+
+boot();
 
 if ('serviceWorker' in navigator && location.protocol === 'https:') {
   // When a new version takes over, reload once so the page runs the new code
