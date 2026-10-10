@@ -77,13 +77,14 @@ const TEMPLATES = {
 const roundLoad = (w) => (w < 20 ? Math.round(w) : Math.round(w / 2.5) * 2.5);
 
 const buildItems = (focus, factor, k) =>
-  TEMPLATES[focus].map(([ex, sets, reps, w]) => ({
-    id: uid('it'),
-    exId: 'ex-' + ex,
-    sets,
-    reps: isTimed(reps) ? (k >= 2 ? '75s' : reps) : reps,
-    weight: w === '' ? '' : roundLoad(w * factor * (1 + 0.025 * k)),
-  }));
+  TEMPLATES[focus].map(([ex, count, reps, w], i) => {
+    const r = isTimed(reps) ? (k >= 2 ? '75s' : reps) : reps;
+    const load = w === '' ? '' : roundLoad(w * factor * (1 + 0.025 * k));
+    const sets = Array.from({ length: count }, () => ({ reps: r, weight: load }));
+    // First exercise ramps up: a lighter, higher-rep opening set.
+    if (i === 0 && load !== '') sets[0] = { reps: r + 2, weight: roundLoad(load * 0.85) };
+    return { id: uid('it'), exId: 'ex-' + ex, sets };
+  });
 
 export function demoData() {
   const today = todayISO();
@@ -98,7 +99,7 @@ export function demoData() {
     ['tom', 'Tom', 'Becker', 52, 'Male', 178, 84, 0.8, [0, 5], ['11:00', '11:00'], 'split', ''],
     ['lucas', 'Lucas', 'Martin', 38, 'Male', 180, 79, 0.9, [], [], 'split', ''],
   ];
-  const out = { version: 1, exercises: libraryExercises(), clients: [], sessions: [] };
+  const out = { version: 2, exercises: libraryExercises(), clients: [], sessions: [] };
   clients.forEach(([key, first, last, age, sex, height, weight, factor, days, times, plan, notes], ci) => {
     const id = 'c-' + key;
     out.clients.push({ id, first, last, age, sex, height, weight, notes, createdAt: addDays(today, -60 - ci * 17) });
@@ -139,7 +140,7 @@ export function demoData() {
 }
 
 export function emptyData() {
-  return { version: 1, exercises: libraryExercises(), clients: [], sessions: [] };
+  return { version: 2, exercises: libraryExercises(), clients: [], sessions: [] };
 }
 
 // ---------- persistence ----------
@@ -151,7 +152,11 @@ function load() {
     const raw = localStorage.getItem(KEY);
     if (raw) {
       const d = JSON.parse(raw);
-      if (d && Array.isArray(d.clients) && Array.isArray(d.sessions) && Array.isArray(d.exercises)) return d;
+      if (isValidBackup(d)) {
+        migrate(d);
+        persist(d);
+        return d;
+      }
     }
   } catch (e) {
     /* fall through to demo data */
@@ -173,12 +178,28 @@ function persist(d) {
 export const save = () => persist(db);
 
 export function replaceData(d) {
+  migrate(d);
   db = d;
   save();
 }
 
 export function isValidBackup(d) {
-  return d && Array.isArray(d.clients) && Array.isArray(d.sessions) && Array.isArray(d.exercises);
+  return !!d && Array.isArray(d.clients) && Array.isArray(d.sessions) && Array.isArray(d.exercises);
+}
+
+// v1 stored one sets/reps/weight per exercise; v2 stores a list of sets, each with its own
+// reps and weight. Old items become N identical sets, so nothing is lost.
+function migrate(d) {
+  d.sessions.forEach((s) => {
+    (s.items || []).forEach((it) => {
+      if (Array.isArray(it.sets)) return;
+      const n = Math.max(1, parseInt(it.sets, 10) || 1);
+      it.sets = Array.from({ length: n }, () => ({ reps: it.reps ?? 10, weight: it.weight ?? '' }));
+      delete it.reps;
+      delete it.weight;
+    });
+  });
+  d.version = 2;
 }
 
 // ---------- lookups ----------
@@ -213,11 +234,44 @@ export const sessionNumber = (s) => sessionsFor(s.clientId).findIndex((x) => x.i
 
 export const usageCount = (exId) => db.sessions.filter((s) => s.items.some((it) => it.exId === exId)).length;
 
+// ---------- sets ----------
+
+export const trackingOf = (exId) => (exById(exId) || {}).tracking || 'Weight × reps';
+export const setCount = (it) => it.sets.length;
+export const totalSets = (items) => items.reduce((n, it) => n + it.sets.length, 0);
+export const isUniform = (it) => it.sets.every((x) => String(x.reps) === String(it.sets[0].reps) && String(x.weight) === String(it.sets[0].weight));
+export const newSets = (n = 3, reps = 10, weight = '') => Array.from({ length: n }, () => ({ reps, weight }));
+
+// Whole exercise: "70 kg × 10" when every set is the same, else each set: "60 kg × 12, 70 kg × 10, …".
+export function itemSummary(it) {
+  const tracking = trackingOf(it.exId);
+  if (!it.sets.length) return '';
+  if (isUniform(it)) return describe(it.sets[0], tracking);
+  return it.sets.map((x) => describe(x, tracking)).join(', ');
+}
+
+// Compact parts for tables: work = "3 × 10" or "12 · 10 · 10", load = "70 kg" or "60–70 kg".
+export function itemParts(it) {
+  const tracking = trackingOf(it.exId);
+  const n = it.sets.length;
+  const reps = it.sets.map((x) => repsLabel(x.reps));
+  const sameReps = reps.every((r) => r === reps[0]);
+  const work = sameReps ? n + ' × ' + reps[0] : reps.join(' · ');
+  const ws = it.sets.map((x) => x.weight).filter((w) => w !== '' && w != null && +w > 0).map(Number);
+  let load = '—';
+  if (ws.length) {
+    const lo = Math.min(...ws);
+    const hi = Math.max(...ws);
+    load = (tracking === 'Weight × reps' ? '' : '+') + (lo === hi ? fmtKg(lo) : fmtKg(lo).replace(' kg', '') + '–' + fmtKg(hi));
+  } else if (tracking === 'Weight × reps') load = 'Bodyweight';
+  return { work, load };
+}
+
 // ---------- personal bests ----------
 
 const secs = (reps) => parseInt(reps, 10) || 0;
 
-// Comparable score for one logged item, by the exercise's tracking mode.
+// Comparable score for one set, by the exercise's tracking mode.
 function score(item, tracking) {
   if (tracking === 'Time') return [secs(item.reps), 0];
   if (tracking === 'Reps only') return [isTimed(item.reps) ? 0 : +item.reps || 0, 0];
@@ -225,6 +279,7 @@ function score(item, tracking) {
 }
 const better = (a, b) => a[0] > b[0] || (a[0] === b[0] && a[1] > b[1]);
 
+// One set, e.g. "70 kg × 10", "12 reps", "60 s".
 export function describe(item, tracking) {
   if (tracking === 'Time') return repsLabel(item.reps);
   if (tracking === 'Reps only') return repsLabel(item.reps) + (isTimed(item.reps) ? '' : ' reps');
@@ -238,13 +293,16 @@ export function personalBests(clientId) {
   const lastDate = done.length ? done[done.length - 1].date : null;
   done.forEach((s) => {
     s.items.forEach((it) => {
-      const ex = exById(it.exId);
-      const tracking = ex ? ex.tracking : 'Weight × reps';
-      const sc = score(it, tracking);
-      const cur = best[it.exId];
-      if (!cur || better(sc, cur.sc)) {
-        best[it.exId] = { exId: it.exId, sc, item: it, tracking, date: s.date, improved: !!cur };
-      }
+      const tracking = trackingOf(it.exId);
+      it.sets.forEach((set) => {
+        const sc = score(set, tracking);
+        const cur = best[it.exId];
+        if (!cur || better(sc, cur.sc)) {
+          // "improved" = beat a record from an earlier session (not just an earlier set today).
+          const improved = !cur ? false : cur.date !== s.date ? true : cur.improved;
+          best[it.exId] = { exId: it.exId, sc, item: set, tracking, date: s.date, improved };
+        }
+      });
     });
   });
   return Object.values(best)
@@ -268,10 +326,7 @@ export function lastFor(session, exId) {
   const done = doneFor(session.clientId).filter((s) => s.id !== session.id);
   for (let i = done.length - 1; i >= 0; i--) {
     const it = done[i].items.find((x) => x.exId === exId);
-    if (it) {
-      const ex = exById(exId);
-      return { display: describe(it, ex ? ex.tracking : 'Weight × reps'), date: done[i].date };
-    }
+    if (it) return { display: itemSummary(it), date: done[i].date, item: it };
   }
   return null;
 }
@@ -299,7 +354,7 @@ export function createSession(clientId, date, time) {
 }
 
 export function copyItems(fromSession) {
-  return fromSession.items.map((it) => ({ ...it, id: uid('it') }));
+  return fromSession.items.map((it) => ({ ...it, id: uid('it'), sets: it.sets.map((x) => ({ ...x })) }));
 }
 
 export function deleteSession(id) {

@@ -482,7 +482,7 @@ a.client-row:hover { background: var(--soft); }
 .hist-body { margin: 0 6px 12px 62px; background: var(--soft); border-radius: 12px; padding: 4px 14px 12px; }
 .hist-item { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 10px; align-items: baseline; padding: 8px 0; border-bottom: 1px solid #E8EAE5; font-size: 13px; }
 .hist-item > span:first-child { font-weight: 700; }
-.hist-item strong { font-variant-numeric: tabular-nums; text-align: right; min-width: 92px; }
+.hist-item strong { font-variant-numeric: tabular-nums; text-align: right; min-width: 92px; max-width: 60vw; }
 .hist-actions { display: flex; gap: 8px; padding-top: 12px; flex-wrap: wrap; }
 @media (max-width: 499px) { .hist-body { margin-left: 0; } }
 
@@ -520,7 +520,7 @@ button.choice:hover { border-color: var(--ink); }
 .exercises .card-head { flex-wrap: wrap; }
 .item-head, .item-row {
   display: grid;
-  grid-template-columns: 24px minmax(0, 2.4fr) 76px 92px 110px minmax(0, 1.25fr) 124px;
+  grid-template-columns: 24px minmax(0, 2.4fr) 76px 92px 110px minmax(0, 1.25fr) 150px;
   gap: 10px; align-items: center;
 }
 .item-head { font-size: 11px; font-weight: 800; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; padding: 4px 0 8px; }
@@ -536,6 +536,32 @@ button.choice:hover { border-color: var(--ink); }
 .item-hint { display: flex; flex-direction: column; font-size: 12px; font-weight: 600; color: var(--muted); line-height: 1.35; min-width: 0; }
 .item-hint strong { color: var(--ink); font-weight: 800; }
 .item-actions { display: flex; justify-content: flex-end; gap: 2px; }
+.item-actions .btn-icon.sm { width: 36px; }
+.btn-icon.sm.on { background: var(--ink); color: #fff; }
+.btn-icon.sm.on:hover { background: var(--ink); color: #fff; }
+
+/* sets that differ (or the set-by-set editor is open): one summary button across Reps + Weight */
+.item-mixed {
+  grid-column: 4 / span 2; align-self: stretch; min-height: 46px;
+  display: flex; align-items: center; gap: 10px; padding: 0 12px;
+  border: 1px dashed #B9BFB6; border-radius: 12px; background: var(--soft);
+  font-size: 13px; font-weight: 600; color: var(--muted); text-align: left;
+}
+.item-mixed span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.item-mixed span:first-child { flex: 1; }
+.item-mixed strong { color: var(--ink); font-weight: 800; font-variant-numeric: tabular-nums; }
+.item-mixed svg { flex-shrink: 0; color: var(--muted); }
+.item-mixed:hover { border-color: var(--ink); }
+.item-mixed.is-open { border-style: solid; border-color: var(--ink); background: var(--surface); color: var(--ink); font-weight: 800; }
+
+.set-panel { grid-column: 2 / -1; background: var(--soft); border-radius: 14px; padding: 10px 12px 12px; display: flex; flex-direction: column; gap: 6px; }
+.set-head, .set-row { display: grid; grid-template-columns: 56px minmax(0, 130px) minmax(0, 140px) 40px; gap: 8px; align-items: center; }
+.set-head { font-size: 11px; font-weight: 800; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; }
+.set-num { font-size: 13px; font-weight: 800; color: var(--ink-2); }
+.set-row .select-wrap select { padding-right: 28px; }
+.set-row .select-wrap svg { right: 8px; }
+.set-foot { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding-top: 4px; }
+.set-foot .btn { background: var(--surface); }
 
 @container (max-width: 760px) {
   .item-head { display: none; }
@@ -544,7 +570,8 @@ button.choice:hover { border-color: var(--ink); }
     grid-template-areas:
       "num ex ex ex"
       ". sets reps weight"
-      ". hint hint act";
+      ". hint hint hint"
+      ". act act act";
     row-gap: 8px; column-gap: 8px; padding: 14px 0;
   }
   .item-num { grid-area: num; align-self: center; }
@@ -553,7 +580,10 @@ button.choice:hover { border-color: var(--ink); }
   .item-reps { grid-area: reps; }
   .item-weight { grid-area: weight; }
   .item-hint { grid-area: hint; align-self: center; }
-  .item-actions { grid-area: act; }
+  .item-actions { grid-area: act; margin-top: -4px; }
+  .item-mixed { grid-column: 3 / span 2; grid-row: 2; align-self: end; min-height: 46px; }
+  .set-panel { grid-column: 1 / -1; grid-row: 5; }
+  .set-head, .set-row { grid-template-columns: 46px minmax(0, 1fr) minmax(0, 1fr) 40px; }
   .item-row .mini-label {
     position: static; width: auto; height: auto; overflow: visible; clip: auto;
     display: block; font-size: 11px; font-weight: 800; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 4px;

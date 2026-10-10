@@ -6,7 +6,7 @@
 // (iOS rejects navigator.share after a slow await).
 
 import { fullName, fromISO, todayISO, fmtKg, repsLabel } from './util.js';
-import { doneFor, personalBests, exById, exName } from './store.js';
+import { doneFor, personalBests, exName, trackingOf, isUniform, totalSets } from './store.js';
 
 let ready = null;
 let fonts = null;
@@ -61,14 +61,30 @@ export function sessionsInRange(clientId, from, to) {
     .reverse();
 }
 
+const setLoad = (set, tracking) => {
+  const w = set.weight;
+  if (tracking === 'Weight × reps') return w === '' || w == null ? 'Bodyweight' : fmtKg(w);
+  return w !== '' && w != null && +w > 0 ? '+' + fmtKg(w) : '—';
+};
+
+// One table row per exercise; when sets differ, also one sub-row per set.
 function itemCells(it) {
-  const ex = exById(it.exId);
-  const tracking = ex ? ex.tracking : 'Weight × reps';
-  const work = it.sets + ' × ' + repsLabel(it.reps);
-  let load = '—';
-  if (tracking === 'Weight × reps') load = it.weight === '' || it.weight == null ? 'Bodyweight' : fmtKg(it.weight);
-  else if (it.weight !== '' && it.weight != null && +it.weight > 0) load = '+' + fmtKg(it.weight);
-  return { name: exName(it.exId), work, load };
+  const tracking = trackingOf(it.exId);
+  const name = exName(it.exId);
+  if (isUniform(it)) {
+    const first = it.sets[0];
+    return { name, work: it.sets.length + ' × ' + repsLabel(first.reps), load: setLoad(first, tracking), sets: null };
+  }
+  return {
+    name,
+    work: it.sets.length + ' sets',
+    load: '',
+    sets: it.sets.map((set, i) => ({
+      label: 'Set ' + (i + 1),
+      work: repsLabel(set.reps) + (tracking === 'Time' ? '' : ' reps'),
+      load: setLoad(set, tracking),
+    })),
+  };
 }
 
 // ---------- drawing ----------
@@ -176,7 +192,7 @@ export function buildClientPdf(client, opts) {
 
   // ---- summary tiles (training numbers only) ----
   if (opts.history) {
-    const sets = sessions.reduce((n, s) => n + s.items.reduce((m, it) => m + (+it.sets || 0), 0), 0);
+    const sets = sessions.reduce((n, s) => n + totalSets(s.items), 0);
     const pbsInRange = pbs.filter((p) => p.date >= opts.from && p.date <= opts.to).length;
     const tiles = [
       ['Sessions', String(sessions.length)],
@@ -249,9 +265,9 @@ export function buildClientPdf(client, opts) {
     sessions.forEach((s) => {
       const rows = s.items.map(itemCells);
       // Keep a session on one page when it fits on a page at all; otherwise at least its first rows.
-      const blockH = 11 + rows.length * 7.5;
+      const blockH = 11 + rows.reduce((h, r) => h + 7.5 + (r.sets ? r.sets.length * 5.6 + 1 : 0), 0);
       ensure(blockH <= BOTTOM - (M + 16) ? blockH : 11 + 2 * 7.5);
-      const sets = s.items.reduce((n, it) => n + (+it.sets || 0), 0);
+      const sets = totalSets(s.items);
       doc.setFillColor(C.soft);
       doc.roundedRect(M, y - 5.5, W, 9, 2, 2, 'F');
       font('bold', 10.5);
@@ -273,6 +289,18 @@ export function buildClientPdf(client, opts) {
         doc.text(r.work, xWork, y);
         font('bold', 10);
         doc.text(r.load, PAGE_W - M - 4, y, { align: 'right' });
+        if (r.sets) {
+          r.sets.forEach((set) => {
+            y += 5.6;
+            ensure(5.6);
+            font('normal', 9, C.muted);
+            doc.text(set.label, M + 10, y);
+            doc.text(set.work, xWork, y);
+            font('bold', 9, C.ink2);
+            doc.text(set.load, PAGE_W - M - 4, y, { align: 'right' });
+          });
+          y += 1;
+        }
         y += 2.6;
         if (i < rows.length - 1) {
           doc.setDrawColor(C.line);

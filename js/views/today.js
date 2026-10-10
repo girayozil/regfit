@@ -2,7 +2,7 @@
 // Also owns the global "New session" flow (client picker modal).
 
 import { esc, icon, on, app, todayISO, addDays, weekStart, fmtLong, dowShort, dayNum, relDay, fmtMonthYear, timeToMin, nowMinutes, fullName, initials, tint } from '../util.js';
-import { db, sessionsOn, clientById, exName, sessionEnded, createSession, suggestTime, describe, exById } from '../store.js';
+import { db, sessionsOn, clientById, exName, sessionEnded, createSession, suggestTime, itemParts } from '../store.js';
 
 const ui = { day: null, pickQ: '' };
 
@@ -85,8 +85,8 @@ export function render() {
         next.items.length
           ? `<ol class="next-list">${next.items
               .map((it) => {
-                const ex = exById(it.exId);
-                return `<li><span>${esc(exName(it.exId))}</span><span class="next-sets">${it.sets} × ${esc(String(it.reps).replace(/s$/, ' s'))}</span><span class="next-load">${it.weight !== '' && ex && ex.tracking === 'Weight × reps' ? esc(describe(it, ex.tracking).split(' × ')[0]) : '—'}</span></li>`;
+                const { work, load } = itemParts(it);
+                return `<li><span>${esc(exName(it.exId))}</span><span class="next-sets">${esc(work)}</span><span class="next-load">${esc(load === 'Bodyweight' ? 'BW' : load)}</span></li>`;
               })
               .join('')}</ol>`
           : `<p class="next-empty">No exercises planned yet.</p>`

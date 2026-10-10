@@ -1,7 +1,7 @@
 // Client profile: details, upcoming sessions, personal bests, past workouts.
 
 import { esc, icon, on, app, fullName, initials, tint, relDay, fmtShort, monShort, dayNum, fmtMonthYear, todayISO, addDays, fmtKg } from '../util.js';
-import { clientById, sessionsFor, doneFor, nextSession, personalBests, exName, exById, describe, createSession, copyItems, sessionById, save, sessionEnded } from '../store.js';
+import { clientById, sessionsFor, doneFor, nextSession, personalBests, exName, itemSummary, totalSets, createSession, copyItems, sessionById, save, sessionEnded } from '../store.js';
 
 import './export.js';
 
@@ -51,7 +51,7 @@ export function render(id) {
     ? done
         .map((s) => {
           const open = openId === s.id;
-          const sets = s.items.reduce((n, it) => n + (+it.sets || 0), 0);
+          const sets = totalSets(s.items);
           return `<div class="hist">
             <button type="button" class="hist-btn" data-act="toggleHist" data-id="${s.id}" data-client="${id}" aria-expanded="${open}">
               <span class="hist-date"><span>${esc(monShort(s.date))}</span><strong>${dayNum(s.date)}</strong></span>
@@ -63,8 +63,8 @@ export function render(id) {
                 ? `<div class="hist-body">
                     ${s.items
                       .map((it) => {
-                        const ex = exById(it.exId);
-                        return `<div class="hist-item"><span>${esc(exName(it.exId))}</span><span class="muted">${it.sets} sets</span><strong>${esc(describe(it, ex ? ex.tracking : 'Weight × reps'))}</strong></div>`;
+                        const n = it.sets.length;
+                        return `<div class="hist-item"><span>${esc(exName(it.exId))}</span><span class="muted">${n} set${n === 1 ? '' : 's'}</span><strong>${esc(itemSummary(it))}</strong></div>`;
                       })
                       .join('')}
                     <div class="hist-actions">
