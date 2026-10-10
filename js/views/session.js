@@ -379,10 +379,15 @@ on('change', 'itemNoteDone', (el) => {
 });
 
 // ---------- drag to reorder ----------
-// Only the handle starts a drag (it has touch-action: none), so the page still scrolls normally.
+// Only the handle starts a drag. With a mouse it starts straight away; on touch screens it needs
+// a long press (like iOS lists), so a thumb that lands on the handle while scrolling just scrolls.
+
+const LONG_PRESS_MS = 400;
+const MOVE_TOLERANCE = 8; // px a finger may wander during the press before it counts as a scroll
 
 const rowIds = (list) => [...list.querySelectorAll(':scope > .item-row')].map((r) => r.dataset.row);
 let drag = null;
+let press = null; // touch waiting for the long press
 
 function positionDrag() {
   const { row, list, grab, y } = drag;
@@ -419,28 +424,69 @@ function dragFrame() {
   drag.raf = requestAnimationFrame(dragFrame);
 }
 
-document.addEventListener('pointerdown', (e) => {
-  const handle = e.target.closest('[data-drag]');
-  if (!handle || e.button > 0) return;
+function startDrag(handle, pointerId, startY, y) {
   const row = handle.closest('.item-row');
+  if (!row || !row.isConnected) return;
   const list = row.parentElement;
-  e.preventDefault();
   try {
-    handle.setPointerCapture(e.pointerId);
+    handle.setPointerCapture(pointerId);
   } catch (err) {
     /* capture is a nicety; moves are tracked on the document anyway */
   }
-  drag = { handle, row, list, grab: e.clientY - row.getBoundingClientRect().top, y: e.clientY, before: rowIds(list).join() };
+  drag = { handle, row, list, grab: startY - row.getBoundingClientRect().top, y, before: rowIds(list).join() };
   row.classList.add('dragging');
   document.body.classList.add('is-dragging');
+  if (navigator.vibrate) navigator.vibrate(10); // a small buzz where supported (Android)
   drag.raf = requestAnimationFrame(dragFrame);
+}
+
+const cancelPress = () => {
+  if (!press) return;
+  clearTimeout(press.timer);
+  press.handle.classList.remove('pressing');
+  press = null;
+};
+
+document.addEventListener('pointerdown', (e) => {
+  const handle = e.target.closest('[data-drag]');
+  if (!handle || e.button > 0) return;
+  if (e.pointerType === 'mouse') {
+    e.preventDefault();
+    startDrag(handle, e.pointerId, e.clientY, e.clientY);
+    return;
+  }
+  cancelPress();
+  press = { handle, id: e.pointerId, x: e.clientX, y: e.clientY, lastY: e.clientY };
+  handle.classList.add('pressing');
+  press.timer = setTimeout(() => {
+    const p = press;
+    cancelPress();
+    if (p) startDrag(p.handle, p.id, p.y, p.lastY);
+  }, LONG_PRESS_MS);
 });
 document.addEventListener('pointermove', (e) => {
+  if (press && e.pointerId === press.id) {
+    press.lastY = e.clientY;
+    if (Math.hypot(e.clientX - press.x, e.clientY - press.y) > MOVE_TOLERANCE) cancelPress(); // it's a scroll
+    return;
+  }
   if (!drag) return;
   drag.y = e.clientY;
   positionDrag();
 });
+// Once a row is lifted, stop the page from scrolling under the finger.
+document.addEventListener(
+  'touchmove',
+  (e) => {
+    if (drag) e.preventDefault();
+  },
+  { passive: false }
+);
+document.addEventListener('contextmenu', (e) => {
+  if (e.target.closest && e.target.closest('[data-drag]')) e.preventDefault();
+});
 const endDrag = () => {
+  cancelPress();
   if (!drag) return;
   const { row, list, before } = drag;
   cancelAnimationFrame(drag.raf);

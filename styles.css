@@ -534,10 +534,13 @@ button.choice:hover { border-color: var(--ink); }
 .item-foot { display: contents; }
 .drag-handle {
   width: 30px; height: 44px; border: 0; background: transparent; color: #9DA39E; border-radius: 8px;
-  display: grid; place-items: center; cursor: grab; touch-action: none; padding: 0;
+  display: grid; place-items: center; cursor: grab; padding: 0;
+  touch-action: pan-y; -webkit-touch-callout: none; user-select: none; -webkit-user-select: none;
+  transition: background .15s, color .15s, transform .15s;
 }
+.drag-handle.pressing { color: var(--ink); background: var(--line-2); transform: scale(1.12); transition-duration: .4s; }
 .drag-handle:hover { color: var(--ink); background: var(--line-2); }
-.item-row.dragging { position: relative; z-index: 10; background: var(--surface); border-radius: 14px; box-shadow: 0 12px 32px rgba(18, 20, 19, 0.18); border-top-color: transparent; }
+.item-row.dragging { animation: lift .15s ease-out; position: relative; z-index: 10; background: var(--surface); border-radius: 14px; box-shadow: 0 12px 32px rgba(18, 20, 19, 0.18); border-top-color: transparent; }
 .item-row.dragging .drag-handle { cursor: grabbing; color: var(--ink); }
 body.is-dragging { user-select: none; -webkit-user-select: none; cursor: grabbing; }
 .item-note { grid-column: 2 / -1; }
@@ -789,6 +792,7 @@ body.is-offline .action-bar { bottom: calc(60px + var(--tabbar-h) + env(safe-are
   .modal { width: 100%; max-height: 88vh; border-radius: 22px 22px 0 0; padding: 18px 16px calc(18px + env(safe-area-inset-bottom)); animation: up .2s ease-out; }
 }
 @keyframes fade { from { opacity: 0; } }
+@keyframes lift { from { box-shadow: none; } }
 @keyframes up { from { transform: translateY(40px); opacity: 0; } }
 
 .toast {
