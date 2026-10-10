@@ -1,0 +1,319 @@
+// Data layer: persistence in localStorage, demo seed data, and derived queries
+// (personal bests, last-time hints, next/last sessions).
+
+import { uid, todayISO, addDays, fromISO, fmtShort, fmtKg, isTimed, repsLabel, timeToMin, nowMinutes } from './util.js';
+
+const KEY = 'regfit.data.v1';
+
+export const MUSCLES = {
+  Upper: ['Chest', 'Back', 'Shoulders', 'Biceps', 'Triceps', 'Forearms', 'Traps'],
+  Lower: ['Quads', 'Hamstrings', 'Glutes', 'Calves', 'Adductors'],
+  Core: ['Abs', 'Obliques', 'Lower back'],
+};
+export const REGION_NAME = { Upper: 'Upper body', Lower: 'Lower body', Core: 'Core' };
+export const EQUIPMENT = ['Barbell', 'Dumbbells', 'Machine', 'Cable', 'Kettlebell', 'Plate', 'Bodyweight', 'Band', 'Smith machine'];
+export const TRACKING = ['Weight × reps', 'Reps only', 'Time'];
+
+const LIBRARY = [
+  ['Barbell Bench Press', 'Upper', 'Chest, Triceps, Shoulders', 'Barbell'],
+  ['Chest Press (Machine)', 'Upper', 'Chest, Triceps', 'Machine'],
+  ['Incline Dumbbell Press', 'Upper', 'Chest, Shoulders', 'Dumbbells'],
+  ['Cable Fly', 'Upper', 'Chest', 'Cable'],
+  ['Push-Up', 'Upper', 'Chest, Triceps', 'Bodyweight', 'Reps only'],
+  ['Lat Pulldown', 'Upper', 'Back, Biceps', 'Cable'],
+  ['Pull-Up', 'Upper', 'Back, Biceps', 'Bodyweight', 'Reps only'],
+  ['Seated Cable Row', 'Upper', 'Back, Biceps', 'Cable'],
+  ['Dumbbell Row', 'Upper', 'Back, Biceps', 'Dumbbells'],
+  ['Overhead Press', 'Upper', 'Shoulders, Triceps', 'Barbell'],
+  ['Lateral Raise', 'Upper', 'Shoulders', 'Dumbbells'],
+  ['Face Pull', 'Upper', 'Shoulders, Traps', 'Cable'],
+  ['Shrug', 'Upper', 'Traps, Forearms', 'Dumbbells'],
+  ['Bicep Curl', 'Upper', 'Biceps', 'Dumbbells'],
+  ['Hammer Curl', 'Upper', 'Biceps, Forearms', 'Dumbbells'],
+  ['Tricep Pushdown', 'Upper', 'Triceps', 'Cable'],
+  ['Skull Crusher', 'Upper', 'Triceps', 'Barbell'],
+  ['Back Squat', 'Lower', 'Quads, Glutes', 'Barbell'],
+  ['Goblet Squat', 'Lower', 'Quads, Glutes', 'Kettlebell'],
+  ['Leg Press', 'Lower', 'Quads, Glutes', 'Machine'],
+  ['Romanian Deadlift', 'Lower', 'Hamstrings, Glutes, Lower back', 'Barbell'],
+  ['Deadlift', 'Lower', 'Hamstrings, Glutes, Back', 'Barbell'],
+  ['Walking Lunge', 'Lower', 'Quads, Glutes', 'Dumbbells'],
+  ['Bulgarian Split Squat', 'Lower', 'Quads, Glutes', 'Dumbbells'],
+  ['Leg Extension', 'Lower', 'Quads', 'Machine'],
+  ['Lying Leg Curl', 'Lower', 'Hamstrings', 'Machine'],
+  ['Hip Thrust', 'Lower', 'Glutes, Hamstrings', 'Barbell'],
+  ['Standing Calf Raise', 'Lower', 'Calves', 'Machine'],
+  ['Hip Adduction', 'Lower', 'Adductors', 'Machine'],
+  ['Plank', 'Core', 'Abs', 'Bodyweight', 'Time'],
+  ['Side Plank', 'Core', 'Obliques', 'Bodyweight', 'Time'],
+  ['Dead Bug', 'Core', 'Abs', 'Bodyweight', 'Reps only'],
+  ['Hanging Leg Raise', 'Core', 'Abs', 'Bodyweight', 'Reps only'],
+  ['Cable Woodchopper', 'Core', 'Obliques', 'Cable'],
+  ['Russian Twist', 'Core', 'Obliques, Abs', 'Plate'],
+  ['Back Extension', 'Core', 'Lower back, Glutes', 'Bodyweight', 'Reps only'],
+];
+
+const slug = (s) => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+
+const libraryExercises = () =>
+  LIBRARY.map(([name, region, muscles, equipment, tracking]) => ({
+    id: 'ex-' + slug(name),
+    name,
+    region,
+    muscles: muscles.split(', '),
+    equipment,
+    tracking: tracking || 'Weight × reps',
+    cues: '',
+  }));
+
+// ---------- demo seed ----------
+
+const TEMPLATES = {
+  'Upper body': [['chest-press-machine', 3, 10, 70], ['lat-pulldown', 3, 12, 65], ['seated-cable-row', 3, 10, 57.5], ['lateral-raise', 3, 12, 8], ['bicep-curl', 3, 12, 16], ['tricep-pushdown', 3, 12, 25]],
+  'Lower body': [['leg-press', 3, 10, 160], ['romanian-deadlift', 3, 10, 80], ['walking-lunge', 3, 12, 16], ['lying-leg-curl', 3, 12, 40], ['standing-calf-raise', 3, 15, 60], ['plank', 3, '60s', '']],
+  'Full body': [['back-squat', 3, 8, 80], ['barbell-bench-press', 3, 8, 60], ['dumbbell-row', 3, 10, 26], ['hip-thrust', 3, 10, 90], ['dead-bug', 3, 10, '']],
+};
+
+const roundLoad = (w) => (w < 20 ? Math.round(w) : Math.round(w / 2.5) * 2.5);
+
+const buildItems = (focus, factor, k) =>
+  TEMPLATES[focus].map(([ex, sets, reps, w]) => ({
+    id: uid('it'),
+    exId: 'ex-' + ex,
+    sets,
+    reps: isTimed(reps) ? (k >= 2 ? '75s' : reps) : reps,
+    weight: w === '' ? '' : roundLoad(w * factor * (1 + 0.025 * k)),
+  }));
+
+export function demoData() {
+  const today = todayISO();
+  const clients = [
+    // id, first, last, age, sex, height, weight, strength factor, weekdays (Mon=0), times, plan, notes
+    ['marco', 'Marco', 'Rossi', 41, 'Male', 182, 86.5, 1.0, [1, 3], ['09:30', '09:30'], 'split', 'Goal: build strength before ski season. Mild lower-back tightness — warm up well.'],
+    ['sarah', 'Sarah', 'Collins', 29, 'Female', 168, 61, 0.6, [0, 3, 5], ['07:00', '07:00', '08:00'], 'split', 'Half-marathon in March. Keep legs fresh on long-run weeks.'],
+    ['ana', 'Ana', 'Lopes', 36, 'Female', 163, 58, 0.55, [0, 2], ['12:00', '12:00'], 'full', ''],
+    ['james', 'James', 'Okafor', 33, 'Male', 188, 92, 1.15, [1, 3], ['16:30', '16:30'], 'split', 'Plays Sunday league football.'],
+    ['elif', 'Elif', 'Demir', 27, 'Female', 170, 63, 0.65, [2, 4], ['08:00', '08:00'], 'full', ''],
+    ['priya', 'Priya', 'Shah', 45, 'Female', 160, 66, 0.45, [4, 5], ['18:00', '10:00'], 'split', 'Shoulder impingement history — no overhead pressing.'],
+    ['tom', 'Tom', 'Becker', 52, 'Male', 178, 84, 0.8, [0, 5], ['11:00', '11:00'], 'split', ''],
+    ['lucas', 'Lucas', 'Martin', 38, 'Male', 180, 79, 0.9, [], [], 'split', ''],
+  ];
+  const out = { version: 1, exercises: libraryExercises(), clients: [], sessions: [] };
+  clients.forEach(([key, first, last, age, sex, height, weight, factor, days, times, plan, notes], ci) => {
+    const id = 'c-' + key;
+    out.clients.push({ id, first, last, age, sex, height, weight, notes, createdAt: addDays(today, -60 - ci * 17) });
+    const focusCount = { 'Upper body': 0, 'Lower body': 0, 'Full body': 0 };
+    const lastDoneOn = {};
+    let alt = ci % 2;
+    const add = (date, time, isPast) => {
+      const focus = plan === 'full' ? 'Full body' : alt++ % 2 ? 'Lower body' : 'Upper body';
+      const k = focusCount[focus]++;
+      const soon = date <= addDays(today, 2);
+      out.sessions.push({
+        id: uid('s'),
+        clientId: id,
+        date,
+        time,
+        duration: 60,
+        focus,
+        status: isPast ? 'done' : 'planned',
+        started: isPast || soon,
+        copiedFrom: !isPast && soon && lastDoneOn[focus] ? fmtShort(lastDoneOn[focus]) + ' · ' + focus : null,
+        items: isPast || soon ? buildItems(focus, factor, k) : [],
+      });
+      if (isPast) lastDoneOn[focus] = date;
+    };
+    if (key === 'lucas') {
+      add(addDays(today, -19), '17:00', true);
+      add(addDays(today, -17), '17:00', true);
+      return;
+    }
+    for (let off = -21; off <= 6; off++) {
+      const date = addDays(today, off);
+      const dow = (fromISO(date).getDay() + 6) % 7;
+      const i = days.indexOf(dow);
+      if (i !== -1) add(date, times[i], off < 0);
+    }
+  });
+  return out;
+}
+
+export function emptyData() {
+  return { version: 1, exercises: libraryExercises(), clients: [], sessions: [] };
+}
+
+// ---------- persistence ----------
+
+export let db = load();
+
+function load() {
+  try {
+    const raw = localStorage.getItem(KEY);
+    if (raw) {
+      const d = JSON.parse(raw);
+      if (d && Array.isArray(d.clients) && Array.isArray(d.sessions) && Array.isArray(d.exercises)) return d;
+    }
+  } catch (e) {
+    /* fall through to demo data */
+  }
+  const d = demoData();
+  persist(d);
+  return d;
+}
+
+function persist(d) {
+  try {
+    localStorage.setItem(KEY, JSON.stringify(d));
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
+export const save = () => persist(db);
+
+export function replaceData(d) {
+  db = d;
+  save();
+}
+
+export function isValidBackup(d) {
+  return d && Array.isArray(d.clients) && Array.isArray(d.sessions) && Array.isArray(d.exercises);
+}
+
+// ---------- lookups ----------
+
+export const exById = (id) => db.exercises.find((e) => e.id === id);
+export const exName = (id) => (exById(id) || {}).name || 'Deleted exercise';
+export const clientById = (id) => db.clients.find((c) => c.id === id);
+export const sessionById = (id) => db.sessions.find((s) => s.id === id);
+
+const chrono = (a, b) => (a.date + a.time).localeCompare(b.date + b.time);
+
+export const sessionsFor = (clientId) => db.sessions.filter((s) => s.clientId === clientId).sort(chrono);
+export const doneFor = (clientId) => sessionsFor(clientId).filter((s) => s.status === 'done');
+export const sessionsOn = (date) => db.sessions.filter((s) => s.date === date).sort(chrono);
+
+export const sessionEnded = (s) => {
+  const t = todayISO();
+  return s.date < t || (s.date === t && timeToMin(s.time) + (s.duration || 60) <= nowMinutes());
+};
+
+export function nextSession(clientId) {
+  const t = todayISO();
+  return sessionsFor(clientId).find((s) => s.status === 'planned' && s.date >= t) || null;
+}
+
+export function lastDone(clientId) {
+  const d = doneFor(clientId);
+  return d[d.length - 1] || null;
+}
+
+export const sessionNumber = (s) => sessionsFor(s.clientId).findIndex((x) => x.id === s.id) + 1;
+
+export const usageCount = (exId) => db.sessions.filter((s) => s.items.some((it) => it.exId === exId)).length;
+
+// ---------- personal bests ----------
+
+const secs = (reps) => parseInt(reps, 10) || 0;
+
+// Comparable score for one logged item, by the exercise's tracking mode.
+function score(item, tracking) {
+  if (tracking === 'Time') return [secs(item.reps), 0];
+  if (tracking === 'Reps only') return [isTimed(item.reps) ? 0 : +item.reps || 0, 0];
+  return [+item.weight || 0, isTimed(item.reps) ? secs(item.reps) : +item.reps || 0];
+}
+const better = (a, b) => a[0] > b[0] || (a[0] === b[0] && a[1] > b[1]);
+
+export function describe(item, tracking) {
+  if (tracking === 'Time') return repsLabel(item.reps);
+  if (tracking === 'Reps only') return repsLabel(item.reps) + (isTimed(item.reps) ? '' : ' reps');
+  return (item.weight === '' || item.weight == null ? 'BW' : fmtKg(item.weight)) + ' × ' + repsLabel(item.reps);
+}
+
+// Returns [{exId, name, display, date, isNew}] — best per exercise across done sessions.
+export function personalBests(clientId) {
+  const done = doneFor(clientId);
+  const best = {};
+  const lastDate = done.length ? done[done.length - 1].date : null;
+  done.forEach((s) => {
+    s.items.forEach((it) => {
+      const ex = exById(it.exId);
+      const tracking = ex ? ex.tracking : 'Weight × reps';
+      const sc = score(it, tracking);
+      const cur = best[it.exId];
+      if (!cur || better(sc, cur.sc)) {
+        best[it.exId] = { exId: it.exId, sc, item: it, tracking, date: s.date, improved: !!cur };
+      }
+    });
+  });
+  return Object.values(best)
+    .map((b) => ({
+      exId: b.exId,
+      name: exName(b.exId),
+      display: describe(b.item, b.tracking),
+      date: b.date,
+      isNew: b.improved && b.date === lastDate,
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+
+export function bestFor(clientId, exId) {
+  const pb = personalBests(clientId).find((p) => p.exId === exId);
+  return pb ? pb.display : null;
+}
+
+// Most recent logged item for this exercise, from a done session other than `session`.
+export function lastFor(session, exId) {
+  const done = doneFor(session.clientId).filter((s) => s.id !== session.id);
+  for (let i = done.length - 1; i >= 0; i--) {
+    const it = done[i].items.find((x) => x.exId === exId);
+    if (it) {
+      const ex = exById(exId);
+      return { display: describe(it, ex ? ex.tracking : 'Weight × reps'), date: done[i].date };
+    }
+  }
+  return null;
+}
+
+// ---------- mutations ----------
+
+export function createClient(fields) {
+  const c = { id: uid('c'), notes: '', createdAt: todayISO(), ...fields };
+  db.clients.push(c);
+  save();
+  return c;
+}
+
+export function deleteClient(id) {
+  db.clients = db.clients.filter((c) => c.id !== id);
+  db.sessions = db.sessions.filter((s) => s.clientId !== id);
+  save();
+}
+
+export function createSession(clientId, date, time) {
+  const s = { id: uid('s'), clientId, date, time, duration: 60, focus: '', status: 'planned', started: false, copiedFrom: null, items: [] };
+  db.sessions.push(s);
+  save();
+  return s;
+}
+
+export function copyItems(fromSession) {
+  return fromSession.items.map((it) => ({ ...it, id: uid('it') }));
+}
+
+export function deleteSession(id) {
+  db.sessions = db.sessions.filter((s) => s.id !== id);
+  save();
+}
+
+// Default slot for a new session: same time as the client's last session, else next half hour.
+export function suggestTime(clientId, date) {
+  const prev = clientId && sessionsFor(clientId).slice(-1)[0];
+  if (prev) return prev.time;
+  if (date === todayISO()) {
+    const m = Math.min(Math.ceil((nowMinutes() + 1) / 30) * 30, 21 * 60);
+    return String(Math.floor(m / 60)).padStart(2, '0') + ':' + String(m % 60).padStart(2, '0');
+  }
+  return '09:00';
+}
