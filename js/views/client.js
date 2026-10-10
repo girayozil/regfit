@@ -90,7 +90,7 @@ export function render(id) {
       </div>
       <div class="head-actions">
         <a class="btn btn-outline" href="#/client/${c.id}/edit">${icon.edit(16)}Edit</a>
-        <button type="button" class="btn btn-outline" data-act="openExport" data-id="${c.id}">${icon.file(16)}Export PDF</button>
+        <button type="button" class="btn btn-outline" data-act="openExport" data-id="${c.id}">${icon.file(16)}Export</button>
         <button type="button" class="btn btn-dark" data-act="scheduleNext" data-id="${c.id}">${icon.today(16)}Schedule next workout</button>
       </div>
     </div>

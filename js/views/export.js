@@ -1,7 +1,7 @@
-// "Export PDF" dialog on the client profile: pick sections and a date range,
+// "Export" dialog on the client profile: pick sections and a date range,
 // then share or download a training summary PDF.
 
-import { esc, icon, on, app, todayISO, addDays, fromISO, toISO } from '../util.js';
+import { icon, on, app, todayISO, addDays, fromISO, toISO } from '../util.js';
 import { clientById, doneFor, personalBests } from '../store.js';
 import { prepare, isPrepared, buildClientPdf, pdfFileName, sessionsInRange } from '../pdf.js';
 
@@ -52,8 +52,7 @@ function html() {
         ? `<p class="export-status">Turn on at least one section.</p>`
         : '';
   return `
-  <div class="modal-head"><h2>Export PDF</h2><button type="button" class="btn-icon" data-act="closeModal" aria-label="Close">${icon.x(18)}</button></div>
-  <p class="muted small">A training summary to share with ${esc(c.first)}. Only their name is included — no age, sex, height or weight.</p>
+  <div class="modal-head"><h2>Export</h2><button type="button" class="btn-icon" data-act="closeModal" aria-label="Close">${icon.x(18)}</button></div>
   <div class="export-opts">
     <div class="export-opt">
       ${toggle('history', 'Exercise history', 'Completed sessions, exercise by exercise', st.history)}
@@ -109,7 +108,7 @@ on('click', 'openExport', (el) => {
     [st.from, st.to] = presetRange('3m', id);
   }
   load();
-  app.modal(html(), 'Export PDF');
+  app.modal(html(), 'Export');
 });
 
 on('change', 'expToggle', (el) => {
