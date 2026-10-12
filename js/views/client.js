@@ -1,7 +1,7 @@
 // Client profile: details, upcoming sessions, personal bests, past workouts.
 
 import { esc, icon, on, app, fullName, initials, tint, relDay, fmtShort, monShort, dayNum, fmtMonthYear, todayISO, addDays, fmtKg } from '../util.js';
-import { clientById, sessionsFor, doneFor, nextSession, personalBests, PB_CATEGORIES, exName, itemSummary, totalSets, createSession, copyItems, sessionById, save, sessionEnded } from '../store.js';
+import { clientById, sessionsFor, doneFor, nextSession, personalBests, PB_CATEGORIES, groupLabels, exName, itemSummary, totalSets, createSession, copyItems, sessionById, save, sessionEnded } from '../store.js';
 
 import './export.js';
 import { cardHtml as progressCard } from './chart.js';
@@ -74,12 +74,12 @@ export function render(id) {
             ${
               open
                 ? `<div class="hist-body">
-                    ${s.items
+                    ${((labels) => s.items
                       .map((it) => {
                         const n = it.sets.length;
-                        return `<div class="hist-item"><span>${esc(exName(it.exId))}</span><span class="muted">${n} set${n === 1 ? '' : 's'}</span><strong>${esc(itemSummary(it))}</strong>${it.note ? `<span class="hist-note">${esc(it.note)}</span>` : ''}</div>`;
+                        return `<div class="hist-item${labels[it.id] ? ' in-ss' : ''}"><span>${labels[it.id] ? `<b class="ss-label">${labels[it.id]}</b> ` : ''}${esc(exName(it.exId))}</span><span class="muted">${n} set${n === 1 ? '' : 's'}</span><strong>${esc(itemSummary(it))}</strong>${it.note ? `<span class="hist-note">${esc(it.note)}</span>` : ''}</div>`;
                       })
-                      .join('')}
+                      .join(''))(groupLabels(s.items))}
                     <div class="hist-actions">
                       <a class="btn btn-sm btn-outline" href="#/session/${s.id}">Open</a>
                       <button type="button" class="btn btn-sm btn-dark" data-act="useTemplate" data-id="${s.id}">${icon.copy(14)}Use for next session</button>

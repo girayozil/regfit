@@ -6,7 +6,7 @@
 // (iOS rejects navigator.share after a slow await).
 
 import { fullName, fromISO, todayISO, fmtKg, repsLabel } from './util.js';
-import { doneFor, personalBests, PB_CATEGORIES, exName, trackingOf, isUniform, totalSets } from './store.js';
+import { doneFor, personalBests, PB_CATEGORIES, groupLabels, exName, trackingOf, isUniform, totalSets } from './store.js';
 
 let ready = null;
 let fonts = null;
@@ -284,7 +284,8 @@ export function buildClientPdf(client, opts) {
     }
     const xWork = M + W * 0.62;
     sessions.forEach((s) => {
-      const rows = s.items.map(itemCells);
+      const labels = groupLabels(s.items);
+      const rows = s.items.map((it) => ({ ...itemCells(it), label: labels[it.id], group: it.group }));
       // Exercise notes only when the Notes section is switched on.
       if (opts.notes) {
         font('normal', 8.5);
@@ -307,10 +308,21 @@ export function buildClientPdf(client, opts) {
       font('normal', 9, C.muted);
       doc.text(rows.length + ' exercises · ' + sets + ' sets', PAGE_W - M - 4, y, { align: 'right' });
       y += 9;
+      let groupTop = null; // where the current superset's bracket starts
       rows.forEach((r, i) => {
         ensure(7.5);
+        if (r.label && (i === 0 || rows[i - 1].group !== r.group)) groupTop = { y: y - 4.6, page: doc.internal.getCurrentPageInfo().pageNumber };
+        let nameX = M + 4;
+        if (r.label) {
+          // Superset label (A1, A2…) on a lime chip before the name.
+          doc.setFillColor(C.accent);
+          doc.roundedRect(M + 4, y - 3.6, 8, 4.8, 1, 1, 'F');
+          font('bold', 8, C.ink);
+          doc.text(r.label, M + 8, y - 0.1, { align: 'center' });
+          nameX = M + 14;
+        }
         font('normal', 10, C.ink);
-        doc.text(fit(r.name, xWork - M - 8), M + 4, y);
+        doc.text(fit(r.name, xWork - nameX - 4), nameX, y);
         font('normal', 10, C.muted);
         doc.text(r.work, xWork, y);
         font('bold', 10);
@@ -333,6 +345,12 @@ export function buildClientPdf(client, opts) {
           font('normal', 8.5, C.ink2);
           doc.text(line, M + 10, y);
         });
+        // Close the superset bracket after its last exercise (when it stayed on one page).
+        if (r.label && (i === rows.length - 1 || rows[i + 1].group !== r.group) && groupTop && groupTop.page === doc.internal.getCurrentPageInfo().pageNumber) {
+          doc.setDrawColor(C.accent);
+          doc.setLineWidth(1.4);
+          doc.line(M + 1.2, groupTop.y, M + 1.2, y + 1.6);
+        }
         y += 2.6;
         if (i < rows.length - 1) {
           doc.setDrawColor(C.line);

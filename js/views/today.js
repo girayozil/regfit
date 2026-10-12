@@ -2,7 +2,7 @@
 // Also owns the global "New session" flow (client picker modal).
 
 import { esc, icon, on, app, todayISO, addDays, weekStart, fmtLong, dowShort, dayNum, relDay, fmtMonthYear, timeToMin, nowMinutes, fullName, initials, tint } from '../util.js';
-import { db, sessionsOn, clientById, exName, sessionEnded, createSession, suggestTime, itemParts } from '../store.js';
+import { db, sessionsOn, clientById, exName, sessionEnded, createSession, suggestTime, itemParts, groupLabels } from '../store.js';
 
 const ui = { day: null, pickQ: '' };
 
@@ -86,7 +86,8 @@ export function render() {
           ? `<ol class="next-list">${next.items
               .map((it) => {
                 const { work, load } = itemParts(it);
-                return `<li><span>${esc(exName(it.exId))}</span><span class="next-sets">${esc(work)}</span><span class="next-load">${esc(load === 'Bodyweight' ? 'BW' : load)}</span></li>`;
+                const label = groupLabels(next.items)[it.id];
+                return `<li><span>${label ? `<b class="ss-label">${label}</b> ` : ''}${esc(exName(it.exId))}</span><span class="next-sets">${esc(work)}</span><span class="next-load">${esc(load === 'Bodyweight' ? 'BW' : load)}</span></li>`;
               })
               .join('')}</ol>`
           : `<p class="next-empty">No exercises planned yet.</p>`

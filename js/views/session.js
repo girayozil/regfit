@@ -2,7 +2,7 @@
 // exercise rows with dropdowns, and logging the session as done.
 
 import { esc, icon, on, app, uid, fullName, initials, tint, relDay, fmtShort, todayISO, isTimed, parseNum, select, opt, minToTime } from '../util.js';
-import { db, sessionById, clientById, sessionsFor, sessionNumber, exById, exName, lastFor, bestFor, personalBests, copyItems, deleteSession, save, PB_CATEGORIES, isUniform, itemParts, totalSets, newSets, trackingOf } from '../store.js';
+import { db, sessionById, clientById, sessionsFor, sessionNumber, exById, exName, lastFor, bestFor, personalBests, copyItems, deleteSession, save, PB_CATEGORIES, normalizeGroups, blocksOf, groupLabels, isUniform, itemParts, totalSets, newSets, trackingOf } from '../store.js';
 import { sessionStatus } from './today.js';
 import { openPicker } from './expicker.js';
 
@@ -47,7 +47,8 @@ function setPanel(it, d, tracking, last) {
   </div>`;
 }
 
-function itemRow(s, it, i, n) {
+// label: superset label like 'A1' (or undefined); next: the exercise below, for the link button.
+function itemRow(s, it, i, label, next) {
   const tracking = trackingOf(it.exId);
   const last = it.exId ? lastFor(s, it.exId) : null;
   const best = it.exId ? bestFor(s.clientId, it.exId) : null;
@@ -77,7 +78,7 @@ function itemRow(s, it, i, n) {
   const exLabel = it.exId ? exName(it.exId) : 'exercise ' + (i + 1);
   return `<div class="item-row${open ? ' has-panel' : ''}" data-row="${it.id}">
     <button type="button" class="drag-handle" data-drag ${d} aria-label="Reorder ${esc(exLabel)}: drag, or use the arrow keys" title="Drag to reorder">${icon.grip(18)}</button>
-    <div class="item-ex"><button type="button" class="ex-picker${it.exId ? '' : ' empty'}" data-act="openExPicker" ${d} aria-haspopup="dialog" aria-label="Exercise ${i + 1}: ${esc(it.exId ? exName(it.exId) : 'choose')}"><span>${esc(it.exId ? exName(it.exId) : 'Choose exercise')}</span>${icon.search(16)}</button></div>
+    <div class="item-ex"><button type="button" class="ex-picker${it.exId ? '' : ' empty'}" data-act="openExPicker" ${d} aria-haspopup="dialog" aria-label="Exercise ${i + 1}: ${esc(it.exId ? exName(it.exId) : 'choose')}">${label ? `<span class="ss-label">${label}</span>` : ''}<span class="ex-name">${esc(it.exId ? exName(it.exId) : 'Choose exercise')}</span>${icon.search(16)}</button></div>
     <label class="item-sets"><span class="mini-label">Sets</span>${select(`aria-label="Sets" data-change="itemSets" ${d}`, setOpts.map((v) => opt(v, v, count)).join(''))}</label>
     ${middle}
     <div class="item-foot">
@@ -90,7 +91,36 @@ function itemRow(s, it, i, n) {
     </div>
     ${it.note ? `<button type="button" class="item-note" data-act="toggleNote" ${d} aria-label="Edit note">${esc(it.note)}</button>` : ''}
     ${open ? setPanel(it, d, tracking, last) : ''}
+    ${next ? linkButton(it, next) : ''}
   </div>`;
+}
+
+// Chain button on the line between two exercises: links them into a superset, or unlinks.
+function linkButton(a, b) {
+  const linked = !!a.group && a.group === b.group;
+  const names = `${a.exId ? exName(a.exId) : 'this exercise'} and ${b.exId ? exName(b.exId) : 'the next one'}`;
+  return `<button type="button" class="link-btn${linked ? ' on' : ''}" data-act="toggleLink" data-a="${a.id}" data-b="${b.id}" aria-pressed="${linked}" aria-label="${linked ? 'Unlink ' + esc(names) : 'Superset ' + esc(names)}" title="${linked ? 'Unlink superset' : 'Make a superset'}">${icon.link(15)}</button>`;
+}
+
+// Exercises in order; supersets are wrapped in a block with a header and their own drag handle.
+function itemsHtml(s) {
+  const labels = groupLabels(s.items);
+  let i = 0;
+  return blocksOf(s.items)
+    .map((block) => {
+      const rows = block.map((it) => itemRow(s, it, i, labels[it.id], s.items[++i])).join('');
+      if (block.length < 2) return rows;
+      const letter = labels[block[0].id][0];
+      const rounds = Math.max(...block.map((it) => it.sets.length));
+      return `<div class="ss-group" data-group="${block[0].group}">
+        <div class="ss-head">
+          <button type="button" class="drag-handle" data-drag data-group="${block[0].group}" aria-label="Reorder superset ${letter}: drag, or use the arrow keys" title="Drag to reorder">${icon.grip(18)}</button>
+          <span>Superset ${letter} · ${block.length} exercises · ${rounds} round${rounds === 1 ? '' : 's'}</span>
+        </div>
+        ${rows}
+      </div>`;
+    })
+    .join('');
 }
 
 export function render(id) {
@@ -145,7 +175,7 @@ export function render(id) {
     </div>
     <div class="item-head" aria-hidden="true"><span></span><span>Exercise</span><span>Sets</span><span>Reps</span><span>Weight</span><span>Last · Best</span><span></span></div>
     <div class="item-list" data-session="${s.id}">
-      ${s.items.length ? s.items.map((it, i) => itemRow(s, it, i, s.items.length)).join('') : `<div class="empty-inline">No exercises yet. Add the first one below.</div>`}
+      ${s.items.length ? itemsHtml(s) : `<div class="empty-inline">No exercises yet. Add the first one below.</div>`}
     </div>
     <button type="button" class="add-row" data-act="addItem" data-id="${s.id}">${icon.plus(18)}Add exercise</button>
   </section>`;
@@ -402,32 +432,35 @@ on('click', 'discardNote', () => app.closeModal());
 const LONG_PRESS_MS = 400;
 const MOVE_TOLERANCE = 8; // px a finger may wander during the press before it counts as a scroll
 
-const rowIds = (list) => [...list.querySelectorAll(':scope > .item-row')].map((r) => r.dataset.row);
+// Order of every exercise as currently shown (supersets included).
+const rowIds = (root) => [...root.querySelectorAll('.item-row')].map((r) => r.dataset.row);
 let drag = null;
 let press = null; // touch waiting for the long press
 
+// Inside a superset, rows move among themselves; at the top level, single exercises and whole
+// supersets move as blocks.
+const siblingsOf = (el, list) => [...list.querySelectorAll(list.classList.contains('ss-group') ? ':scope > .item-row' : ':scope > .item-row, :scope > .ss-group')];
+
 function positionDrag() {
-  const { row, list, grab, y } = drag;
-  const rows = () => [...list.querySelectorAll(':scope > .item-row')];
-  row.style.transform = '';
+  const { el, list, grab, y } = drag;
+  el.style.transform = '';
   // Swap with neighbours while the finger/pointer passes their middle (follows the finger,
-  // whatever the dragged row's height).
-  const mid = y;
+  // whatever the dragged element's height).
   for (let moved = true; moved; ) {
     moved = false;
-    const all = rows();
-    const i = all.indexOf(row);
+    const all = siblingsOf(el, list);
+    const i = all.indexOf(el);
     const prev = all[i - 1];
     const next = all[i + 1];
-    if (prev && mid < prev.getBoundingClientRect().top + prev.offsetHeight / 2) {
-      list.insertBefore(row, prev);
+    if (prev && y < prev.getBoundingClientRect().top + prev.offsetHeight / 2) {
+      list.insertBefore(el, prev);
       moved = true;
-    } else if (next && mid > next.getBoundingClientRect().top + next.offsetHeight / 2) {
-      list.insertBefore(next, row);
+    } else if (next && y > next.getBoundingClientRect().top + next.offsetHeight / 2) {
+      list.insertBefore(next, el);
       moved = true;
     }
   }
-  row.style.transform = `translateY(${y - grab - row.getBoundingClientRect().top}px)`;
+  el.style.transform = `translateY(${y - grab - el.getBoundingClientRect().top}px)`;
 }
 
 function dragFrame() {
@@ -442,16 +475,17 @@ function dragFrame() {
 }
 
 function startDrag(handle, pointerId, startY, y) {
-  const row = handle.closest('.item-row');
-  if (!row || !row.isConnected) return;
-  const list = row.parentElement;
+  const el = handle.dataset.group ? handle.closest('.ss-group') : handle.closest('.item-row');
+  if (!el || !el.isConnected) return;
+  const list = el.parentElement;
+  const root = el.closest('.item-list');
   try {
     handle.setPointerCapture(pointerId);
   } catch (err) {
     /* capture is a nicety; moves are tracked on the document anyway */
   }
-  drag = { handle, row, list, grab: startY - row.getBoundingClientRect().top, y, before: rowIds(list).join() };
-  row.classList.add('dragging');
+  drag = { handle, el, list, root, grab: startY - el.getBoundingClientRect().top, y, before: rowIds(root).join() };
+  el.classList.add('dragging');
   document.body.classList.add('is-dragging');
   if (navigator.vibrate) navigator.vibrate(10); // a small buzz where supported (Android)
   drag.raf = requestAnimationFrame(dragFrame);
@@ -505,15 +539,15 @@ document.addEventListener('contextmenu', (e) => {
 const endDrag = () => {
   cancelPress();
   if (!drag) return;
-  const { row, list, before } = drag;
+  const { el, root, before } = drag;
   cancelAnimationFrame(drag.raf);
   drag = null;
-  row.style.transform = '';
-  row.classList.remove('dragging');
+  el.style.transform = '';
+  el.classList.remove('dragging');
   document.body.classList.remove('is-dragging');
-  const order = rowIds(list);
+  const order = rowIds(root);
   if (order.join() === before) return;
-  const s = sessionById(list.dataset.session);
+  const s = sessionById(root.dataset.session);
   s.items.sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id));
   save();
   app.rerender();
@@ -521,25 +555,56 @@ const endDrag = () => {
 document.addEventListener('pointerup', endDrag);
 document.addEventListener('pointercancel', endDrag);
 
-// Keyboard: arrow keys on a focused handle move the exercise.
+// Keyboard: arrow keys on a focused handle move the exercise (within its superset) or the
+// whole superset (its header handle) past the neighbouring block.
 document.addEventListener('keydown', (e) => {
   const handle = e.target.closest && e.target.closest('[data-drag]');
   if (!handle || (e.key !== 'ArrowUp' && e.key !== 'ArrowDown')) return;
   e.preventDefault();
-  const { s, it } = itemOf(handle);
-  const i = s.items.indexOf(it);
-  const j = i + (e.key === 'ArrowUp' ? -1 : 1);
-  if (j < 0 || j >= s.items.length) return;
-  [s.items[i], s.items[j]] = [s.items[j], s.items[i]];
+  const dir = e.key === 'ArrowUp' ? -1 : 1;
+  const s = sessionById(handle.closest('[data-session]').dataset.session);
+  const blocks = blocksOf(s.items);
+  const g = handle.dataset.group;
+  const it = g ? null : s.items.find((x) => x.id === handle.dataset.item);
+  const bi = blocks.findIndex((b) => (g ? b[0].group === g : b.includes(it)));
+  const block = blocks[bi];
+  if (it && block.length > 1) {
+    const k = block.indexOf(it);
+    if (!block[k + dir]) return;
+    [block[k], block[k + dir]] = [block[k + dir], block[k]];
+  } else {
+    if (!blocks[bi + dir]) return;
+    [blocks[bi], blocks[bi + dir]] = [blocks[bi + dir], blocks[bi]];
+  }
+  s.items = blocks.flat();
   save();
   app.rerender();
-  const again = document.querySelector(`[data-drag][data-item="${it.id}"]`);
+  const again = document.querySelector(g ? `[data-drag][data-group="${g}"]` : `[data-drag][data-item="${it.id}"]`);
   if (again) again.focus();
+});
+
+// Link two neighbouring exercises into a superset (joining any superset either is in), or split.
+on('click', 'toggleLink', (el) => {
+  const s = sessionById(el.closest('[data-session]').dataset.session);
+  const a = s.items.find((x) => x.id === el.dataset.a);
+  const b = s.items.find((x) => x.id === el.dataset.b);
+  if (a.group && a.group === b.group) {
+    const fresh = uid('g');
+    for (let k = s.items.indexOf(b); k < s.items.length && s.items[k].group === a.group; k++) s.items[k].group = fresh;
+  } else {
+    const g = a.group || b.group || uid('g');
+    const old = b.group && b.group !== g ? b.group : null;
+    a.group = b.group = g;
+    if (old) s.items.forEach((x) => x.group === old && (x.group = g));
+  }
+  normalizeGroups(s.items);
+  save();
+  app.rerender();
 });
 
 on('click', 'removeItem', (el) => {
   const { s, it } = itemOf(el);
-  s.items = s.items.filter((x) => x !== it);
+  s.items = normalizeGroups(s.items.filter((x) => x !== it));
   save();
   app.rerender();
 });

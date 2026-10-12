@@ -110,6 +110,16 @@ const EX = {
 };
 const TIMED_EX = new Set(['plank', 'side-plank']);
 
+// Demo pairs done as supersets when they sit next to each other in a workout.
+const SUPERSETS = [['bicep-curl', 'tricep-pushdown'], ['hammer-curl', 'skull-crusher'], ['leg-extension', 'hanging-leg-raise'], ['hip-thrust', 'dead-bug']];
+function applySupersets(items) {
+  SUPERSETS.forEach(([a, b]) => {
+    const i = items.findIndex((it) => it.exId === 'ex-' + a);
+    if (i !== -1 && items[i + 1] && items[i + 1].exId === 'ex-' + b) items[i].group = items[i + 1].group = uid('g');
+  });
+  return items;
+}
+
 const PROGRAMS = {
   'Upper body': [
     ['chest-press-machine', 'lat-pulldown', 'seated-cable-row', 'lateral-raise', 'bicep-curl', 'tricep-pushdown'],
@@ -236,11 +246,11 @@ export function demoData() {
         const week = Math.floor((off + history) / 7);
         const light = week % 7 === 6;
         const bad = !light && rand() < 0.1;
-        session.items = list.map((ex) => perform(ex, light, bad));
+        session.items = applySupersets(list.map((ex) => perform(ex, light, bad)));
         lastDoneOn[focus + v] = date;
       } else if (off <= 2) {
         // Planned in the next few days: already built from the matching previous workout.
-        session.items = list.map(preview);
+        session.items = applySupersets(list.map(preview));
         session.started = true;
         if (lastDoneOn[focus + v]) session.copiedFrom = fmtShort(lastDoneOn[focus + v]) + ' · ' + focus;
       }
@@ -636,7 +646,55 @@ export function createSession(clientId, date, time) {
 }
 
 export function copyItems(fromSession) {
-  return fromSession.items.map((it) => ({ ...it, id: uid('it'), sets: it.sets.map((x) => ({ ...x })) }));
+  const groups = {}; // supersets get fresh group ids in the copy
+  return fromSession.items.map((it) => {
+    const copy = { ...it, id: uid('it'), sets: it.sets.map((x) => ({ ...x })) };
+    if (it.group) copy.group = groups[it.group] = groups[it.group] || uid('g');
+    return copy;
+  });
+}
+
+// ---------- supersets ----------
+// A superset is a run of adjacent exercises sharing the same `group` id.
+
+// Keep `group` only on adjacent runs of 2+; an id reused by two separate runs is split.
+export function normalizeGroups(items) {
+  const seen = new Set();
+  for (let i = 0; i < items.length; ) {
+    const g = items[i].group;
+    let j = i;
+    if (g) while (j + 1 < items.length && items[j + 1].group === g) j++;
+    if (g && j === i) delete items[i].group;
+    else if (g && seen.has(g)) {
+      const fresh = uid('g');
+      for (let k = i; k <= j; k++) items[k].group = fresh;
+      seen.add(fresh);
+    } else if (g) seen.add(g);
+    i = j + 1;
+  }
+  return items;
+}
+
+// Consecutive runs: each superset is one block, every other exercise its own block.
+export function blocksOf(items) {
+  const blocks = [];
+  items.forEach((it, i) => {
+    if (i && it.group && it.group === items[i - 1].group) blocks[blocks.length - 1].push(it);
+    else blocks.push([it]);
+  });
+  return blocks;
+}
+
+// Labels for superset members: { itemId: 'A1' }, lettered A, B, C… in order.
+export function groupLabels(items) {
+  const out = {};
+  let letter = 0;
+  blocksOf(items).forEach((b) => {
+    if (b.length < 2) return;
+    const L = String.fromCharCode(65 + (letter++ % 26));
+    b.forEach((it, k) => (out[it.id] = L + (k + 1)));
+  });
+  return out;
 }
 
 export function deleteSession(id) {
