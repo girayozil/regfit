@@ -2,8 +2,9 @@
 // exercise rows with dropdowns, and logging the session as done.
 
 import { esc, icon, on, app, uid, fullName, initials, tint, relDay, fmtShort, todayISO, isTimed, parseNum, select, opt, minToTime } from '../util.js';
-import { db, sessionById, clientById, sessionsFor, sessionNumber, exById, exName, lastFor, bestFor, personalBests, copyItems, deleteSession, save, REGION_NAME, PB_CATEGORIES, isUniform, itemParts, totalSets, newSets, trackingOf } from '../store.js';
+import { db, sessionById, clientById, sessionsFor, sessionNumber, exById, exName, lastFor, bestFor, personalBests, copyItems, deleteSession, save, PB_CATEGORIES, isUniform, itemParts, totalSets, newSets, trackingOf } from '../store.js';
 import { sessionStatus } from './today.js';
+import { openPicker } from './expicker.js';
 
 const TIMES = Array.from({ length: (22 - 5) * 4 + 1 }, (_, i) => minToTime(5 * 60 + i * 15));
 const DURATIONS = [30, 45, 60, 75, 90, 120];
@@ -12,17 +13,6 @@ const REPS = [...Array.from({ length: 30 }, (_, i) => i + 1), 35, 40, 50];
 const TIMED = ['15s', '20s', '30s', '45s', '60s', '75s', '90s', '120s'];
 
 const ui = { copySrc: {}, openSets: new Set() }; // openSets: items showing the set-by-set editor
-
-function exerciseOptions(selected) {
-  const groups = ['Upper', 'Lower', 'Core']
-    .map((r) => {
-      const list = db.exercises.filter((e) => e.region === r).sort((a, b) => a.name.localeCompare(b.name));
-      return `<optgroup label="${REGION_NAME[r]}">${list.map((e) => opt(e.id, e.name, selected)).join('')}</optgroup>`;
-    })
-    .join('');
-  const missing = selected && !exById(selected) ? opt(selected, 'Deleted exercise', selected) : '';
-  return `<option value="" disabled${selected ? '' : ' selected'}>Choose exercise</option>${missing}${groups}`;
-}
 
 function repsOptions(selected, timedFirst) {
   const nums = `<optgroup label="Reps">${REPS.map((r) => opt(r, r, selected)).join('')}</optgroup>`;
@@ -87,7 +77,7 @@ function itemRow(s, it, i, n) {
   const exLabel = it.exId ? exName(it.exId) : 'exercise ' + (i + 1);
   return `<div class="item-row${open ? ' has-panel' : ''}" data-row="${it.id}">
     <button type="button" class="drag-handle" data-drag ${d} aria-label="Reorder ${esc(exLabel)}: drag, or use the arrow keys" title="Drag to reorder">${icon.grip(18)}</button>
-    <label class="item-ex"><span class="mini-label">Exercise</span>${select(`aria-label="Exercise ${i + 1}" data-change="itemEx" ${d}`, exerciseOptions(it.exId))}</label>
+    <div class="item-ex"><button type="button" class="ex-picker${it.exId ? '' : ' empty'}" data-act="openExPicker" ${d} aria-haspopup="dialog" aria-label="Exercise ${i + 1}: ${esc(it.exId ? exName(it.exId) : 'choose')}"><span>${esc(it.exId ? exName(it.exId) : 'Choose exercise')}</span>${icon.search(16)}</button></div>
     <label class="item-sets"><span class="mini-label">Sets</span>${select(`aria-label="Sets" data-change="itemSets" ${d}`, setOpts.map((v) => opt(v, v, count)).join(''))}</label>
     ${middle}
     <div class="item-foot">
@@ -223,6 +213,7 @@ on('click', 'startScratch', (el) => {
   s.items = [{ id: uid('it'), exId: '', sets: newSets() }];
   save();
   app.rerender();
+  pickFor(s, s.items[0]);
 });
 
 on('click', 'startCopy', (el) => {
@@ -249,19 +240,38 @@ on('click', 'changeStart', (el) => {
   app.rerender();
 });
 
+// Add a row and go straight to choosing its exercise.
 on('click', 'addItem', (el) => {
   const s = sessionOf(el);
-  s.items.push({ id: uid('it'), exId: '', sets: newSets() });
+  const it = { id: uid('it'), exId: '', sets: newSets() };
+  s.items.push(it);
   save();
   app.rerender();
-  const rows = document.querySelectorAll('.item-row');
-  const lastRow = rows[rows.length - 1];
-  if (lastRow) lastRow.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  pickFor(s, it);
 });
 
-on('change', 'itemEx', (el) => {
+// Open the search-as-you-type picker for one row.
+function pickFor(s, it) {
+  const c = clientById(s.clientId);
+  openPicker({
+    clientId: s.clientId,
+    current: it.exId,
+    title: it.exId ? 'Change exercise' : 'Add exercise' + (c ? ' for ' + c.first : ''),
+    onPick: (exId) => {
+      setExercise(s, it, exId);
+      const row = document.querySelector(`.item-row[data-row="${it.id}"]`);
+      if (row) row.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    },
+  });
+}
+
+on('click', 'openExPicker', (el) => {
   const { s, it } = itemOf(el);
-  it.exId = el.value;
+  pickFor(s, it);
+});
+
+function setExercise(s, it, exId) {
+  it.exId = exId;
   const ex = exById(it.exId);
   // Keep reps sensible for the exercise's tracking mode.
   it.sets.forEach((set) => {
@@ -275,7 +285,7 @@ on('change', 'itemEx', (el) => {
   }
   save();
   app.rerender();
-});
+}
 
 const repsValue = (v) => (isTimed(v) ? v : +v);
 const updateSummary = (s) => {

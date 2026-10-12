@@ -566,6 +566,17 @@ body.is-dragging { user-select: none; -webkit-user-select: none; cursor: grabbin
 .btn-icon.sm.on { background: var(--ink); color: #fff; }
 .btn-icon.sm.on:hover { background: var(--ink); color: #fff; }
 
+/* exercise picker button (opens the search-as-you-type picker) */
+.ex-picker {
+  width: 100%; min-height: 46px; display: flex; align-items: center; gap: 8px; padding: 0 12px 0 13px;
+  border: 1px solid var(--field); border-radius: 12px; background: var(--surface); color: var(--ink);
+  font-size: 16px; font-weight: 700; text-align: left;
+}
+.ex-picker span { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ex-picker svg { flex-shrink: 0; color: var(--muted); }
+.ex-picker:hover { border-color: #9DA39E; }
+.ex-picker.empty { color: var(--muted); font-weight: 600; border-style: dashed; }
+
 /* sets that differ (or the set-by-set editor is open): one summary button across Reps + Weight */
 .item-mixed {
   grid-column: 4 / span 2; align-self: stretch; min-height: 46px;
@@ -772,6 +783,24 @@ body.is-offline .sync-dot { background: var(--warn); }
 }
 body.is-offline:not(.signed-out) .offline-bar { display: block; }
 body.is-offline .action-bar { bottom: calc(60px + var(--tabbar-h) + env(safe-area-inset-bottom)); }
+
+/* ---------- exercise picker ---------- */
+
+.picker-modal .modal { gap: 10px; }
+.picker-results { overflow-y: auto; max-height: min(52vh, 440px); margin: 0 -6px; padding: 0 6px; overscroll-behavior: contain; }
+.picker-group { font-size: 11px; font-weight: 800; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; padding: 10px 8px 4px; }
+.picker-opt {
+  width: 100%; display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 8px; align-items: center;
+  min-height: 52px; padding: 7px 10px; border: 0; border-radius: 10px; background: transparent; color: var(--ink); text-align: left;
+}
+.picker-opt:hover, .picker-opt.active { background: var(--soft); }
+.picker-opt.active { box-shadow: inset 0 0 0 1.5px var(--line); }
+.picker-name { font-weight: 800; font-size: 15px; }
+.picker-meta { grid-column: 1; font-size: 12px; font-weight: 600; color: var(--muted); }
+.picker-check { grid-column: 2; grid-row: 1 / span 2; color: var(--ink); }
+.picker-opt.current .picker-name { text-decoration: underline; text-decoration-color: var(--accent); text-decoration-thickness: 3px; text-underline-offset: 3px; }
+.picker-empty { padding: 18px 8px; color: var(--muted); font-weight: 600; font-size: 14px; }
+@media (max-width: 699px) { .picker-results { max-height: 38vh; } }
 
 /* ---------- modal & toast ---------- */
 
