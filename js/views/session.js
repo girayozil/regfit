@@ -143,6 +143,9 @@ export function render(id) {
     <label class="field-label">Start time${select(`data-change="sessionField" data-f="time" data-id="${s.id}"`, times.map((t) => opt(t, t, s.time)).join(''))}</label>
     <label class="field-label">Duration${select(`data-change="sessionField" data-f="duration" data-id="${s.id}"`, DURATIONS.map((d) => opt(d, d + ' min', s.duration || 60)).join(''))}</label>
     <label class="field-label">Focus<input class="field" value="${esc(s.focus)}" placeholder="e.g. Upper body" data-input="sessionFocus" data-id="${s.id}" autocapitalize="sentences"></label>
+    <button type="button" class="session-note${s.note ? ' has-text' : ''}" data-act="sessionNote" data-id="${s.id}" aria-label="${s.note ? 'Edit session note' : 'Add a session note'}">
+      ${icon.note(16)}<span>${s.note ? esc(s.note) : 'Add a session note'}</span>
+    </button>
   </section>`;
 
   const choice = `<section class="choose" aria-label="How do you want to start?">
@@ -386,20 +389,18 @@ on('click', 'removeSet', (el) => {
 // Edited in a small panel pinned to the top of the screen, so the phone keyboard never covers it.
 // Changes only count once saved; Discard (or closing the panel) leaves the note as it was.
 
-const editingNote = {};
-
-on('click', 'toggleNote', (el) => {
-  const { s, it } = itemOf(el);
-  editingNote.session = s.id;
-  editingNote.item = it.id;
+// One editor for exercise notes and the session note: saves through `onSave` on Save only.
+let noteSave = null;
+function openNote(title, label, value, onSave) {
+  noteSave = onSave;
   app.modal(
-    `<div class="modal-head"><h2>Note · ${esc(it.exId ? exName(it.exId) : 'Exercise')}</h2></div>
-     <textarea class="field note-input" rows="4" placeholder="Note" aria-label="Note">${esc(it.note || '')}</textarea>
+    `<div class="modal-head"><h2>${esc(title)}</h2></div>
+     <textarea class="field note-input" rows="4" placeholder="Note" aria-label="${esc(label)}">${esc(value || '')}</textarea>
      <div class="note-actions">
        <button type="button" class="btn btn-outline" data-act="discardNote">${icon.x(16)}Discard</button>
        <button type="button" class="btn btn-dark" data-act="saveNote">${icon.check(16)}Save</button>
      </div>`,
-    'Exercise note',
+    label,
     false,
     'sheet-top'
   );
@@ -407,18 +408,29 @@ on('click', 'toggleNote', (el) => {
   const box = document.querySelector('.note-input');
   box.focus();
   box.setSelectionRange(box.value.length, box.value.length);
+}
+// Store trimmed text, or remove the field when it's empty.
+const setNote = (obj, text) => {
+  if (text) obj.note = text;
+  else delete obj.note;
+  save();
+};
+
+on('click', 'toggleNote', (el) => {
+  const { it } = itemOf(el);
+  openNote('Note · ' + (it.exId ? exName(it.exId) : 'Exercise'), 'Exercise note', it.note, (text) => setNote(it, text));
+});
+
+on('click', 'sessionNote', (el) => {
+  const s = sessionOf(el);
+  openNote('Session note', 'Session note', s.note, (text) => setNote(s, text));
 });
 
 on('click', 'saveNote', () => {
-  const s = sessionById(editingNote.session);
-  const it = s && s.items.find((x) => x.id === editingNote.item);
   const box = document.querySelector('.note-input');
-  if (it && box) {
-    const text = box.value.trim();
-    if (text) it.note = text;
-    else delete it.note;
-    save();
-  }
+  const fn = noteSave;
+  noteSave = null;
+  if (fn && box) fn(box.value.trim());
   app.closeModal();
   app.rerender();
 });

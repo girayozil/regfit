@@ -81,6 +81,7 @@ export function render() {
         <span><span class="next-name">${esc(fullName(c))}</span><span class="next-meta">${esc(next.focus || 'No focus set')}</span></span>
       </div>
       ${next.copiedFrom ? `<div class="next-src">${icon.copy(14)}Copied from ${esc(next.copiedFrom)}</div>` : ''}
+      ${next.note ? `<p class="next-note">${icon.note(14)}<span>${esc(next.note)}</span></p>` : ''}
       ${
         next.items.length
           ? `<ol class="next-list">${next.items

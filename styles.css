@@ -488,6 +488,10 @@ a.client-row:hover { background: var(--soft); }
 .hist-item > span:first-child { font-weight: 700; }
 .hist-item strong { font-variant-numeric: tabular-nums; text-align: right; }
 .hist-item .ss-label, .next-list .ss-label { display: inline-block; font-size: 10px; padding: 1px 5px; margin-right: 4px; vertical-align: 1px; }
+.hist-session-note { font-size: 13px; font-weight: 600; color: var(--ink-2); background: #FFFBEA; border: 1px solid #EADFB0; border-radius: 10px; padding: 7px 10px; margin: 8px 0 4px; white-space: pre-line; }
+.next-note { display: flex; gap: 8px; align-items: flex-start; font-size: 13px; font-weight: 600; color: #F3EBC6; background: #2A2A1E; border-radius: 10px; padding: 8px 10px; line-height: 1.4; }
+.next-note svg { flex-shrink: 0; margin-top: 2px; }
+.next-note span { white-space: pre-line; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
 .hist-note { grid-column: 1 / -1; font-size: 12px; font-weight: 600; color: var(--ink-2); background: #FFFBEA; border-radius: 8px; padding: 5px 8px; margin-top: -2px; white-space: pre-line; }
 .hist-actions { display: flex; gap: 8px; padding-top: 12px; flex-wrap: wrap; }
 @media (max-width: 499px) { .hist-body { margin-left: 0; } }
@@ -570,6 +574,15 @@ body.is-dragging { user-select: none; -webkit-user-select: none; cursor: grabbin
   font-size: 14px; font-weight: 600; color: var(--ink-2); line-height: 1.4;
 }
 .item-note:hover { border-color: #C9B970; }
+.session-note {
+  grid-column: 1 / -1; display: flex; align-items: flex-start; gap: 8px; width: 100%; min-height: 44px; padding: 11px 12px;
+  border: 1px dashed var(--field); border-radius: 12px; background: transparent; color: var(--muted);
+  font-size: 14px; font-weight: 600; text-align: left; cursor: pointer; line-height: 1.4;
+}
+.session-note svg { flex-shrink: 0; margin-top: 1px; }
+.session-note span { flex: 1; min-width: 0; white-space: pre-line; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.session-note:hover { border-color: #9DA39E; color: var(--ink-2); }
+.session-note.has-text { border: 1px solid #EADFB0; background: #FFFBEA; color: var(--ink-2); }
 .note-input { min-height: 110px; resize: none; line-height: 1.45; font-weight: 500; }
 .note-actions { display: flex; gap: 8px; }
 .note-actions .btn { flex: 1; }

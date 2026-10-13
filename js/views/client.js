@@ -74,6 +74,7 @@ export function render(id) {
             ${
               open
                 ? `<div class="hist-body">
+                    ${s.note ? `<p class="hist-session-note">${esc(s.note)}</p>` : ''}
                     ${((labels) => s.items
                       .map((it) => {
                         const n = it.sets.length;

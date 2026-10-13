@@ -5,8 +5,8 @@ import { icon, on, app, todayISO, addDays, fromISO, toISO } from '../util.js';
 import { clientById, doneFor, personalBests } from '../store.js';
 import { prepare, isPrepared, buildClientPdf, pdfFileName, sessionsInRange } from '../pdf.js';
 
-// Client notes, or a note on any exercise in their completed sessions.
-const clientHasNotes = (c) => !!c.notes || doneFor(c.id).some((s) => s.items.some((it) => it.note));
+// Client notes, or a session/exercise note in their completed sessions.
+const clientHasNotes = (c) => !!c.notes || doneFor(c.id).some((s) => s.note || s.items.some((it) => it.note));
 
 const st = { clientId: null, history: true, pbs: true, notes: false, preset: '3m', from: '', to: '', status: 'loading' };
 
@@ -74,7 +74,7 @@ function html() {
       }
     </div>
     <div class="export-opt">${toggle('pbs', 'Personal bests', pbCount ? `All-time best for ${pbCount} exercise${pbCount === 1 ? '' : 's'}` : 'None yet', st.pbs)}</div>
-    <div class="export-opt">${toggle('notes', 'Notes', hasNotes ? 'The client’s notes and any notes on exercises' : 'No notes for this client', st.notes && hasNotes, !hasNotes)}</div>
+    <div class="export-opt">${toggle('notes', 'Notes', hasNotes ? 'The client’s notes, session notes and exercise notes' : 'No notes for this client', st.notes && hasNotes, !hasNotes)}</div>
   </div>
   ${status}
   <div class="export-actions">

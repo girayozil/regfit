@@ -291,8 +291,10 @@ export function buildClientPdf(client, opts) {
         font('normal', 8.5);
         rows.forEach((r) => (r.noteLines = r.note ? doc.splitTextToSize('Note: ' + r.note, W - 14) : []));
       } else rows.forEach((r) => (r.noteLines = []));
+      font('normal', 9);
+      const sessionNote = opts.notes && s.note ? doc.splitTextToSize(s.note, W - 8) : [];
       // Keep a session on one page when it fits on a page at all; otherwise at least its first rows.
-      const blockH = 11 + rows.reduce((h, r) => h + 7.5 + (r.sets ? r.sets.length * 5.6 + 1 : 0) + r.noteLines.length * 4.4, 0);
+      const blockH = 11 + sessionNote.length * 4.6 + (sessionNote.length ? 3 : 0) + rows.reduce((h, r) => h + 7.5 + (r.sets ? r.sets.length * 5.6 + 1 : 0) + r.noteLines.length * 4.4, 0);
       ensure(blockH <= BOTTOM - (M + 16) ? blockH : 11 + 2 * 7.5);
       const sets = totalSets(s.items);
       doc.setFillColor(C.soft);
@@ -308,6 +310,15 @@ export function buildClientPdf(client, opts) {
       font('normal', 9, C.muted);
       doc.text(rows.length + ' exercises · ' + sets + ' sets', PAGE_W - M - 4, y, { align: 'right' });
       y += 9;
+      // Session note (only with the Notes section on), under the session header.
+      if (sessionNote.length) {
+        font('normal', 9, C.ink2);
+        sessionNote.forEach((line) => {
+          doc.text(line, M + 4, y);
+          y += 4.6;
+        });
+        y += 3;
+      }
       let groupTop = null; // where the current superset's bracket starts
       rows.forEach((r, i) => {
         ensure(7.5);
