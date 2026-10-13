@@ -41,22 +41,19 @@ function sections(selId) {
   }).join('');
 }
 
-// Muscle filter: one labelled row per region, each chip with how many exercises it covers.
+// Muscle filter: one alphabetical row of chips (the region switcher narrows it), each with how
+// many exercises in view it covers.
 function muscleFilter() {
-  const cat = muscleCatalog();
-  const regions = ui.region === 'All' ? REGIONS : [ui.region];
+  // Every muscle used by an exercise in view (so Lower body also offers e.g. Lower back).
   const pool = db.exercises.filter((e) => ui.region === 'All' || e.region === ui.region);
-  return regions
-    .map((r) => {
-      const chips = cat[r]
-        .map((m) => [m, pool.filter((e) => e.muscles.includes(m)).length])
-        .filter(([m, n]) => n || ui.muscle === m)
-        .map(([m, n]) => `<button type="button" class="chip${ui.muscle === m ? ' chip-dark' : ''}" aria-pressed="${ui.muscle === m}" data-act="libMuscle" data-v="${esc(m)}">${esc(m)} <span class="chip-count">${n}</span></button>`)
-        .join('');
-      if (!chips) return '';
-      return `<div class="muscle-row">${regions.length > 1 ? `<span class="muscle-row-label">${REGION_NAME[r]}</span>` : ''}<div class="chips">${chips}</div></div>`;
-    })
+  const names = [...new Set(pool.flatMap((e) => e.muscles).concat(ui.muscle ? [ui.muscle] : []))];
+  const chips = names
+    .map((m) => [m, pool.filter((e) => e.muscles.includes(m)).length])
+    .filter(([m, n]) => n || ui.muscle === m)
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([m, n]) => `<button type="button" class="chip${ui.muscle === m ? ' chip-dark' : ''}" aria-pressed="${ui.muscle === m}" data-act="libMuscle" data-v="${esc(m)}">${esc(m)} <span class="chip-count">${n}</span></button>`)
     .join('');
+  return chips ? `<div class="muscle-row"><div class="chips">${chips}</div></div>` : '';
 }
 
 // `e` is a library exercise, or the unsaved draft (id "new") for New exercise / Duplicate.

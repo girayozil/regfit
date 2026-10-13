@@ -1,6 +1,6 @@
 // Offline support: network-first for the app's own files, falling back to the cache.
 // Bump VERSION when shipping changes that must replace cached files.
-const VERSION = 'regfit-v21';
+const VERSION = 'regfit-v22';
 const SHELL = [
   './',
   'index.html',
