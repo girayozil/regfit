@@ -665,11 +665,30 @@ body.is-dragging { user-select: none; -webkit-user-select: none; cursor: grabbin
 
 /* ---------- Library ---------- */
 
-.chips-filter { margin-top: -4px; }
+/* muscle filter: one labelled row per region */
+.muscle-filter { display: flex; flex-direction: column; gap: 6px; margin-top: -4px; }
+.muscle-row { display: flex; align-items: flex-start; gap: 10px; }
+.muscle-row-label { flex-shrink: 0; width: 84px; padding-top: 10px; font-size: 11px; font-weight: 800; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; }
+.muscle-row .chips { flex: 1; min-width: 0; }
+.chip-count { font-size: 11px; font-weight: 800; color: var(--muted); margin-left: 2px; }
+.chip-dark .chip-count { color: var(--side-text); }
+.chip-new { border-style: dashed; color: var(--ink-2); display: inline-flex; align-items: center; gap: 4px; }
+.chip-new:hover { border-style: solid; }
+
+/* exercises grouped by region, then main muscle */
+.ex-sections { display: flex; flex-direction: column; gap: 22px; min-width: 0; }
+.lib-section { display: flex; flex-direction: column; gap: 8px; }
+.lib-region { font-size: 20px; font-weight: 800; letter-spacing: -0.02em; padding-bottom: 6px; border-bottom: 1px solid var(--line); }
+.lib-region span, .lib-muscle span { font-size: 13px; font-weight: 700; color: var(--muted); margin-left: 4px; letter-spacing: 0; }
+.lib-muscle { font-size: 12px; font-weight: 800; color: var(--ink-2); text-transform: uppercase; letter-spacing: 0.08em; margin-top: 8px; }
+.lib-muscle span { font-size: 12px; }
 @media (max-width: 699px) {
-  .chips-filter { flex-wrap: nowrap; overflow-x: auto; margin: -4px calc(-1 * var(--gutter)) 0; padding: 0 var(--gutter); scrollbar-width: none; }
-  .chips-filter::-webkit-scrollbar { display: none; }
-  .chips-filter .chip { flex-shrink: 0; }
+  /* phones: each region's chips scroll sideways under a small label */
+  .muscle-row { flex-direction: column; gap: 4px; }
+  .muscle-row-label { width: auto; padding-top: 4px; }
+  .muscle-row .chips { flex-wrap: nowrap; overflow-x: auto; margin: 0 calc(-1 * var(--gutter)); padding: 0 var(--gutter); scrollbar-width: none; align-self: stretch; }
+  .muscle-row .chips::-webkit-scrollbar { display: none; }
+  .muscle-row .chip { flex-shrink: 0; }
   .toolbar .seg { width: 100%; }
   .toolbar .seg-btn { flex: 1; padding: 0 8px; }
 }

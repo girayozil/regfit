@@ -1,11 +1,11 @@
-// Exercise library: filters (region, muscle, search), cards, and the editor
-// (side panel on wide screens, its own page on narrow ones).
+// Exercise library: filters (region, muscle, search), exercises grouped by region and main
+// muscle, and the editor (side panel on wide screens, its own page on narrow ones).
 
 import { esc, icon, on, app, uid, isWide, select, opt } from '../util.js';
-import { db, exById, usageCount, save, MUSCLES, REGION_NAME, EQUIPMENT, TRACKING } from '../store.js';
+import { db, exById, usageCount, save, REGION_NAME, EQUIPMENT, TRACKING, muscleCatalog, canonicalMuscle } from '../store.js';
 
 const ui = { region: 'All', muscle: null, q: '', draft: null }; // draft: unsaved new exercise
-const TAG = { Upper: 'tag-upper', Lower: 'tag-lower', Core: 'tag-core' };
+const REGIONS = ['Upper', 'Lower', 'Core'];
 
 function filtered() {
   const q = ui.q.toLowerCase();
@@ -14,17 +14,48 @@ function filtered() {
     .sort((a, b) => a.name.localeCompare(b.name));
 }
 
-function cards(selId) {
+const card = (e, selId) => `<a class="ex-card${e.id === selId ? ' selected' : ''}" href="#/library/${e.id}"${e.id === selId ? ' aria-current="true"' : ''}>
+    <span class="ex-name" data-ex-name="${e.id}">${esc(e.name)}</span>
+    <span class="ex-muscles">${esc(e.muscles.join(' · ') || 'No muscle groups')}</span>
+    <span class="ex-meta">${esc(e.equipment)} · ${esc(e.tracking)}</span>
+  </a>`;
+
+// Region sections, each split by main muscle (an exercise's first muscle), in the muscle order
+// used everywhere else (built-in muscles first, custom ones after).
+function sections(selId) {
   const list = filtered();
   if (!list.length) return `<div class="empty-inline">No exercises match these filters.</div>`;
-  return list
-    .map(
-      (e) => `<a class="ex-card${e.id === selId ? ' selected' : ''}" href="#/library/${e.id}"${e.id === selId ? ' aria-current="true"' : ''}>
-        <span class="ex-top"><span class="ex-name" data-ex-name="${e.id}">${esc(e.name)}</span><span class="tag ${TAG[e.region]}">${REGION_NAME[e.region]}</span></span>
-        <span class="ex-muscles">${esc(e.muscles.join(' · ') || 'No muscle groups')}</span>
-        <span class="ex-meta">${esc(e.equipment)} · ${esc(e.tracking)}</span>
-      </a>`
-    )
+  const cat = muscleCatalog();
+  const everywhere = REGIONS.flatMap((r) => cat[r]);
+  return REGIONS.map((r) => {
+    const inRegion = list.filter((e) => e.region === r);
+    if (!inRegion.length) return '';
+    const byMuscle = {};
+    inRegion.forEach((e) => (byMuscle[e.muscles[0] || 'Other'] = byMuscle[e.muscles[0] || 'Other'] || []).push(e));
+    const rank = (m) => (m === 'Other' ? 9999 : cat[r].includes(m) ? cat[r].indexOf(m) : 100 + everywhere.indexOf(m));
+    const groups = Object.keys(byMuscle)
+      .sort((a, b) => rank(a) - rank(b) || a.localeCompare(b))
+      .map((m) => `<h3 class="lib-muscle">${esc(m)} <span>${byMuscle[m].length}</span></h3><div class="ex-grid">${byMuscle[m].map((e) => card(e, selId)).join('')}</div>`)
+      .join('');
+    return `<section class="lib-section" aria-label="${REGION_NAME[r]}"><h2 class="lib-region">${REGION_NAME[r]} <span>${inRegion.length}</span></h2>${groups}</section>`;
+  }).join('');
+}
+
+// Muscle filter: one labelled row per region, each chip with how many exercises it covers.
+function muscleFilter() {
+  const cat = muscleCatalog();
+  const regions = ui.region === 'All' ? REGIONS : [ui.region];
+  const pool = db.exercises.filter((e) => ui.region === 'All' || e.region === ui.region);
+  return regions
+    .map((r) => {
+      const chips = cat[r]
+        .map((m) => [m, pool.filter((e) => e.muscles.includes(m)).length])
+        .filter(([m, n]) => n || ui.muscle === m)
+        .map(([m, n]) => `<button type="button" class="chip${ui.muscle === m ? ' chip-dark' : ''}" aria-pressed="${ui.muscle === m}" data-act="libMuscle" data-v="${esc(m)}">${esc(m)} <span class="chip-count">${n}</span></button>`)
+        .join('');
+      if (!chips) return '';
+      return `<div class="muscle-row">${regions.length > 1 ? `<span class="muscle-row-label">${REGION_NAME[r]}</span>` : ''}<div class="chips">${chips}</div></div>`;
+    })
     .join('');
 }
 
@@ -42,10 +73,12 @@ function editor(e, standalone) {
   const regionSeg = ['Upper', 'Lower', 'Core']
     .map((r) => `<label class="seg-radio"><input type="radio" name="ex-region" value="${r}" data-change="exRegion" data-id="${e.id}"${e.region === r ? ' checked' : ''}><span>${REGION_NAME[r]}</span></label>`)
     .join('');
-  const muscleList = [...MUSCLES[e.region], ...e.muscles.filter((m) => !MUSCLES[e.region].includes(m))];
-  const muscleChips = muscleList
-    .map((m) => `<button type="button" class="chip${e.muscles.includes(m) ? ' chip-on' : ''}" aria-pressed="${e.muscles.includes(m)}" data-act="toggleMuscle" data-id="${e.id}" data-m="${esc(m)}">${esc(m)}</button>`)
-    .join('');
+  const regionMuscles = muscleCatalog()[e.region];
+  const muscleList = [...regionMuscles, ...e.muscles.filter((m) => !regionMuscles.includes(m))];
+  const muscleChips =
+    muscleList
+      .map((m) => `<button type="button" class="chip${e.muscles.includes(m) ? ' chip-on' : ''}" aria-pressed="${e.muscles.includes(m)}" data-act="toggleMuscle" data-id="${e.id}" data-m="${esc(m)}">${esc(m)}</button>`)
+      .join('') + `<button type="button" class="chip chip-new" data-act="newMuscle" data-id="${e.id}">${icon.plus(14)}New</button>`;
   const head = isDraft
     ? `<div class="card-head"><h2 class="eyebrow">${e.copyOf ? 'Duplicate exercise' : 'New exercise'}</h2></div>`
     : `<div class="card-head">
@@ -63,7 +96,7 @@ function editor(e, standalone) {
     ${head}
     <label class="field-label">Name<input class="field" value="${esc(e.name)}" placeholder="e.g. Cable Lateral Raise" data-input="exName" data-change="exNameDone" data-id="${e.id}" autocapitalize="words"></label>
     <div class="field-label"><span id="region-label">Region</span><div class="seg seg-fill" role="radiogroup" aria-labelledby="region-label">${regionSeg}</div></div>
-    <div class="field-label"><span>Muscle groups</span><div class="chips">${muscleChips}</div></div>
+    <div class="field-label"><span>Muscle groups <span class="hint">· the first one picked is the main muscle</span></span><div class="chips">${muscleChips}</div></div>
     <div class="form-grid tight">
       <label class="field-label">Equipment${select(`data-change="exField" data-f="equipment" data-id="${e.id}"`, (EQUIPMENT.includes(e.equipment) ? EQUIPMENT : [...EQUIPMENT, e.equipment]).map((x) => opt(x, x, e.equipment)).join(''))}</label>
       <label class="field-label">Track by${select(`data-change="exField" data-f="tracking" data-id="${e.id}"`, TRACKING.map((x) => opt(x, x, e.tracking)).join(''))}</label>
@@ -90,10 +123,6 @@ export function render(selId) {
   const regions = [['All', 'All'], ['Upper', 'Upper body'], ['Lower', 'Lower body'], ['Core', 'Core']]
     .map(([id, label]) => `<button type="button" class="seg-btn" data-act="libRegion" data-v="${id}" aria-pressed="${ui.region === id}">${label}</button>`)
     .join('');
-  const muscleNames = ui.region === 'All' ? [...MUSCLES.Upper, ...MUSCLES.Lower, ...MUSCLES.Core] : MUSCLES[ui.region];
-  const chips = muscleNames
-    .map((m) => `<button type="button" class="chip${ui.muscle === m ? ' chip-dark' : ''}" aria-pressed="${ui.muscle === m}" data-act="libMuscle" data-v="${esc(m)}">${esc(m)}</button>`)
-    .join('');
 
   return `
   <header class="page-head">
@@ -107,9 +136,9 @@ export function render(selId) {
     <label class="search">${icon.search(18)}<input type="search" placeholder="Search exercises" aria-label="Search exercises" value="${esc(ui.q)}" data-input="libQ" autocomplete="off"></label>
     <div class="seg seg-scroll" role="group" aria-label="Body region">${regions}</div>
   </div>
-  <div class="chips chips-filter" role="group" aria-label="Muscle group">${chips}</div>
+  <div class="muscle-filter" role="group" aria-label="Muscle group">${muscleFilter()}</div>
   <div class="lib-layout${wide ? ' with-editor' : ''}">
-    <div class="ex-grid" id="ex-grid">${cards(sel && sel.id)}</div>
+    <div class="ex-sections" id="ex-grid">${sections(sel && sel.id)}</div>
     ${wide ? editor(sel, false) : ''}
   </div>`;
 }
@@ -128,7 +157,7 @@ on('click', 'libMuscle', (el) => {
 on('input', 'libQ', (el) => {
   ui.q = el.value;
   const sel = location.hash.split('/')[2];
-  document.getElementById('ex-grid').innerHTML = cards(sel);
+  document.getElementById('ex-grid').innerHTML = sections(sel);
 });
 
 // ---------- editing ----------
@@ -166,6 +195,50 @@ on('click', 'toggleMuscle', (el) => {
   commit(e);
   app.rerender();
 });
+// "+ New" muscle group: typed in a small panel (top of the screen on phones), then selected for
+// this exercise. A name that already exists elsewhere (e.g. "Back") just gets selected.
+let muscleFor = null;
+on('click', 'newMuscle', (el) => {
+  muscleFor = el.dataset.id;
+  const e = exOf(el);
+  app.modal(
+    `<div class="modal-head"><h2>New muscle group</h2></div>
+     <label class="field-label">Name<input class="field" id="new-muscle" placeholder="e.g. Rear delts" autocapitalize="words" autocomplete="off" enterkeyhint="done"></label>
+     <p class="muted small">Added to ${esc(e.name || 'this exercise')} · ${REGION_NAME[e.region]}</p>
+     <div class="note-actions">
+       <button type="button" class="btn btn-outline" data-act="closeModal">${icon.x(16)}Cancel</button>
+       <button type="button" class="btn btn-dark" data-act="addMuscle">${icon.check(16)}Add</button>
+     </div>`,
+    'New muscle group',
+    false,
+    'sheet-top'
+  );
+  document.getElementById('new-muscle').focus(); // inside the tap, so iOS shows the keyboard
+});
+
+on('click', 'addMuscle', () => {
+  const input = document.getElementById('new-muscle');
+  const name = canonicalMuscle(input && input.value);
+  if (!name) {
+    app.toast('Type a name first');
+    if (input) input.focus();
+    return;
+  }
+  const e = muscleFor === 'new' ? ui.draft : exById(muscleFor);
+  if (!e) return;
+  if (!e.muscles.includes(name)) e.muscles = [...e.muscles, name];
+  commit(e);
+  app.closeModal();
+  app.rerender();
+});
+
+document.addEventListener('keydown', (ev) => {
+  if (ev.target && ev.target.id === 'new-muscle' && ev.key === 'Enter') {
+    ev.preventDefault();
+    document.querySelector('[data-act="addMuscle"]').click();
+  }
+});
+
 on('change', 'exField', (el) => {
   const e = exOf(el);
   e[el.dataset.f] = el.value;

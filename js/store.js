@@ -457,6 +457,35 @@ export const sessionNumber = (s) => sessionsFor(s.clientId).findIndex((x) => x.i
 
 export const usageCount = (exId) => db.sessions.filter((s) => s.items.some((it) => it.exId === exId)).length;
 
+// ---------- muscle groups ----------
+// Built-in muscles per region, plus any custom muscle an exercise uses. A custom muscle belongs
+// to the region of the first exercise that uses it, and disappears once no exercise uses it,
+// so there's no separate list to keep in sync.
+
+export function muscleCatalog() {
+  const out = { Upper: [...MUSCLES.Upper], Lower: [...MUSCLES.Lower], Core: [...MUSCLES.Core] };
+  const known = new Set(Object.values(out).flat().map((m) => m.toLowerCase()));
+  const custom = { Upper: [], Lower: [], Core: [] };
+  db.exercises.forEach((e) =>
+    e.muscles.forEach((m) => {
+      if (known.has(m.toLowerCase())) return;
+      known.add(m.toLowerCase());
+      (custom[e.region] || custom.Upper).push(m);
+    })
+  );
+  Object.keys(out).forEach((r) => out[r].push(...custom[r].sort((a, b) => a.localeCompare(b))));
+  return out;
+}
+
+// A typed muscle name: the existing spelling if it's already known (any region), otherwise
+// tidied up with a capital first letter.
+export function canonicalMuscle(name) {
+  const t = String(name || '').trim().replace(/\s+/g, ' ');
+  if (!t) return '';
+  const existing = Object.values(muscleCatalog()).flat().find((m) => m.toLowerCase() === t.toLowerCase());
+  return existing || t.charAt(0).toUpperCase() + t.slice(1);
+}
+
 // ---------- sets ----------
 
 export const trackingOf = (exId) => (exById(exId) || {}).tracking || 'Weight × reps';
