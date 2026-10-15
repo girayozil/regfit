@@ -664,6 +664,7 @@ body.is-dragging { user-select: none; -webkit-user-select: none; cursor: grabbin
   .item-ex .mini-label { display: none; }
 }
 
+.danger-zone { display: flex; justify-content: center; padding: 4px 0 2px; }
 .action-bar {
   position: sticky; bottom: calc(16px + var(--tabbar-h) + env(safe-area-inset-bottom)); z-index: 5;
   display: flex; align-items: center; gap: 10px;

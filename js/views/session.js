@@ -191,8 +191,7 @@ export function render(id) {
           isDone
             ? `<button type="button" class="btn btn-outline-dark" data-act="reopenSession" data-id="${s.id}">Reopen</button>
                <a class="btn btn-accent" href="#/client/${c.id}">${icon.check(16)}Done</a>`
-            : `<button type="button" class="btn-icon dark" data-act="deleteSession" data-id="${s.id}" aria-label="Delete session">${icon.trash(18)}</button>
-               <button type="button" class="btn btn-accent" data-act="completeSession" data-id="${s.id}">${icon.check(16)}Mark as done</button>`
+            : `<button type="button" class="btn btn-accent" data-act="completeSession" data-id="${s.id}">${icon.check(16)}Mark as done</button>`
         }
       </div>`;
 
@@ -210,6 +209,7 @@ export function render(id) {
   </header>
   ${when}
   ${choosing ? choice : builder}
+  <div class="danger-zone"><button type="button" class="btn btn-ghost danger" data-act="deleteSession" data-id="${s.id}">${icon.trash(16)}Delete session</button></div>
   ${footer}`;
 }
 
@@ -652,7 +652,11 @@ on('click', 'reopenSession', (el) => {
 
 on('click', 'deleteSession', (el) => {
   const s = sessionOf(el);
-  if (!confirm('Delete this session?')) return;
+  const msg =
+    s.status === 'done'
+      ? 'Delete this logged session? Its sets go too, along with any personal bests set in it. This can’t be undone.'
+      : 'Delete this session? This can’t be undone.';
+  if (!confirm(msg)) return;
   deleteSession(s.id);
   app.toast('Session deleted');
   app.go('#/client/' + s.clientId);
