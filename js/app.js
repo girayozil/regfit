@@ -23,6 +23,7 @@ const routes = [
 
 const viewEl = document.getElementById('view');
 let lastPath = null;
+let lastRendered = null; // path of the screen currently drawn
 
 function currentPath() {
   return decodeURIComponent(location.hash.replace(/^#/, '')) || '/today';
@@ -52,7 +53,13 @@ function render() {
   } else {
     html = `<div class="empty-state"><h1 class="page-title">Page not found</h1><a class="btn btn-dark" href="#/today">Go to Today</a></div>`;
   }
+  // Redrawing the same screen (after a tap, a sync…) must keep the scroll position: iPad Safari
+  // otherwise jumps back to the top when the page's content is replaced.
+  const sameScreen = path === lastRendered;
+  const keepY = window.scrollY;
   viewEl.innerHTML = html;
+  lastRendered = path;
+  if (sameScreen && window.scrollY !== keepY) window.scrollTo(0, keepY);
   // A view can ask for work once its markup is in the page (e.g. measuring a chart's width).
   const after = app.afterRender;
   app.afterRender = null;
@@ -140,7 +147,7 @@ function closeModal() {
   modalLocked = false;
   modalRoot.innerHTML = '';
   document.body.classList.remove('modal-open');
-  if (lastFocus && lastFocus.focus) lastFocus.focus();
+  if (lastFocus && lastFocus.isConnected && lastFocus.focus) lastFocus.focus({ preventScroll: true });
 }
 app.closeModal = closeModal;
 handlers.click.closeModal = (el, e) => {
