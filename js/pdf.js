@@ -10,6 +10,7 @@ import { doneFor, personalBests, PB_CATEGORIES, groupLabels, exName, trackingOf,
 
 let ready = null;
 let fonts = null;
+let logo = null; // data URL of the app logo for the PDF header
 
 function loadScript(src) {
   return new Promise((resolve, reject) => {
@@ -36,9 +37,11 @@ export function prepare() {
       window.jspdf ? null : loadScript('vendor/jspdf.umd.min.js'),
       fontBase64('fonts/Manrope-Medium.ttf'),
       fontBase64('fonts/Manrope-ExtraBold.ttf'),
+      fontBase64('icons/logo-256.png').catch(() => null),
     ])
-      .then(([, regular, bold]) => {
+      .then(([, regular, bold, logoPng]) => {
         fonts = { regular, bold };
+        logo = logoPng ? 'data:image/png;base64,' + logoPng : null;
       })
       .catch((e) => {
         ready = null;
@@ -126,6 +129,10 @@ export function buildClientPdf(client, opts) {
     return t + '…';
   };
   const brand = (x, yy, size) => {
+    if (logo) {
+      doc.addImage(logo, 'PNG', x, yy, size, size);
+      return;
+    }
     doc.setFillColor(C.accent);
     doc.roundedRect(x, yy, size, size, size * 0.3, size * 0.3, 'F');
     // dumbbell mark, drawn on a 24-unit grid inside the square

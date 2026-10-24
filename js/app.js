@@ -160,7 +160,6 @@ handlers.click.noop = () => {};
 document.querySelectorAll('[data-icon]').forEach((el) => {
   el.innerHTML = icon[el.dataset.icon](el.closest('.tab') ? 22 : 18, el.dataset.icon === 'dumbbell' ? 1.9 : undefined);
 });
-document.querySelector('.brand-mark').innerHTML = icon.dumbbell(18, 2.4);
 
 // ---------- cloud: sign-in, setup, sync ----------
 

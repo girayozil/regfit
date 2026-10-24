@@ -1,6 +1,6 @@
 // Offline support: network-first for the app's own files, falling back to the cache.
 // Bump VERSION when shipping changes that must replace cached files.
-const VERSION = 'regfit-v25';
+const VERSION = 'regfit-v26';
 const SHELL = [
   './',
   'index.html',
@@ -25,6 +25,9 @@ const SHELL = [
   'fonts/Manrope-Medium.ttf',
   'fonts/Manrope-ExtraBold.ttf',
   'icons/apple-touch-icon.png',
+  'icons/favicon-32.png',
+  'icons/logo-128.png',
+  'icons/logo-256.png',
   'icons/icon-192.png',
 ];
 

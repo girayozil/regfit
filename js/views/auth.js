@@ -8,7 +8,7 @@ export function renderSignIn() {
   return `
   <div class="auth-wrap">
     <form class="auth-card" id="signin-form" novalidate>
-      <div class="auth-brand"><span class="brand-mark">${icon.dumbbell(18, 2.4)}</span><span>RegFit</span></div>
+      <div class="auth-brand"><img class="brand-logo" src="icons/logo-128.png" alt="" width="40" height="40"><span>RegFit</span></div>
       <h1 class="page-title">Sign in</h1>
       <label class="field-label">Email<input class="field" type="email" name="email" autocomplete="username" inputmode="email" autocapitalize="off" spellcheck="false" value="${esc(ui.email)}" required></label>
       <label class="field-label">Password<input class="field" type="password" name="password" autocomplete="current-password" required></label>
