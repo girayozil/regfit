@@ -3,7 +3,7 @@
 // library by region; typing ranks name matches first, then muscle / equipment matches.
 
 import { esc, icon, on, app } from '../util.js';
-import { db, doneFor, REGION_NAME } from '../store.js';
+import { db, doneFor, REGION_NAME, REGIONS } from '../store.js';
 
 const st = { onPick: null, clientId: null, current: '', results: [], active: 0 };
 
@@ -54,7 +54,7 @@ function resultsHtml(query) {
   const byName = (a, b) => a.name.localeCompare(b.name);
   if (!q) {
     const recent = recentFor(st.clientId);
-    const groups = ['Upper', 'Lower', 'Core'].map((r) => ({ title: REGION_NAME[r], list: db.exercises.filter((e) => e.region === r).sort(byName) }));
+    const groups = REGIONS.map((r) => ({ title: REGION_NAME[r], list: db.exercises.filter((e) => e.region === r).sort(byName) }));
     if (recent.length) groups.unshift({ title: 'Recent', list: recent });
     st.results = groups.flatMap((g) => g.list);
     let i = 0;

@@ -1,7 +1,7 @@
 // App shell: sign-in gate, hash router, event delegation, toast + modal, cloud sync, service worker.
 
 import { app, handlers, icon, isWide, todayISO } from './util.js';
-import { sessionsOn, startSync, stopSync, applyRemote, flush, markAllUnsynced, replaceData, demoData, emptyData, db } from './store.js';
+import { sessionsOn, startSync, stopSync, applyRemote, flush, markAllUnsynced, replaceData, demoData, emptyData, addMissingCardio, db } from './store.js';
 import * as auth from './views/auth.js';
 import * as today from './views/today.js';
 import * as clients from './views/clients.js';
@@ -235,7 +235,10 @@ async function signedIn(user) {
   sync.unsubscribe = app.cloud.subscribe(
     user.uid,
     (name, changes, first) => {
-      if (applyRemote(name, changes, first)) renderSoon();
+      let changed = applyRemote(name, changes, first);
+      // Libraries set up before the Cardio category get its built-in exercises once.
+      if (name === 'exercises' && first && addMissingCardio('regfit.cardioAdded.' + user.uid)) changed = true;
+      if (changed) renderSoon();
     },
     (err) => {
       console.error(err);
@@ -308,6 +311,7 @@ async function boot() {
     app.account = { email: 'Local test mode', uid: 'dev' };
     startSync('dev', null);
     if (!db.clients.length && !db.sessions.length) replaceData(demoData());
+    addMissingCardio('regfit.cardioAdded.dev');
     authState = 'in';
     render();
     return;

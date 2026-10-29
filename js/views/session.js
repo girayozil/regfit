@@ -1,8 +1,8 @@
 // Session editor: when/what, start from scratch or copy a previous session,
 // exercise rows with dropdowns, and logging the session as done.
 
-import { esc, icon, on, app, uid, fullName, initials, tint, relDay, fmtShort, todayISO, isTimed, parseNum, select, opt, minToTime } from '../util.js';
-import { db, sessionById, clientById, sessionsFor, sessionNumber, exById, exName, lastFor, bestFor, personalBests, copyItems, deleteSession, save, PB_CATEGORIES, normalizeGroups, blocksOf, groupLabels, isUniform, itemParts, totalSets, newSets, trackingOf } from '../store.js';
+import { esc, icon, on, app, uid, fmtPace, fullName, initials, tint, relDay, fmtShort, todayISO, isTimed, parseNum, select, opt, minToTime } from '../util.js';
+import { db, sessionById, clientById, sessionsFor, sessionNumber, exById, exName, lastFor, bestFor, personalBests, copyItems, deleteSession, save, pbKeys, CARDIO, intensityUnit, normalizeGroups, blocksOf, groupLabels, isUniform, itemParts, totalSets, newSets, trackingOf } from '../store.js';
 import { sessionStatus } from './today.js';
 import { openPicker } from './expicker.js';
 
@@ -20,7 +20,11 @@ function repsOptions(selected, timedFirst) {
   return timedFirst ? timed + nums : nums + timed;
 }
 
-const summaryText = (s) => `${s.items.length} exercise${s.items.length === 1 ? '' : 's'} · ${totalSets(s.items)} sets`;
+const summaryText = (s) => {
+  const n = s.items.length;
+  const sets = totalSets(s.items);
+  return `${n} exercise${n === 1 ? '' : 's'} · ${sets} set${sets === 1 ? '' : 's'}`;
+};
 
 const weightInput = (attrs, value, tracking, label) =>
   `<span class="unit-wrap"><input class="field" inputmode="decimal" enterkeyhint="next" aria-label="${label}" placeholder="${tracking === 'Weight × reps' ? '0' : 'BW'}" value="${esc(value)}" ${attrs}><span class="unit">kg</span></span>`;
@@ -64,7 +68,22 @@ function itemRow(s, it, i, label, next) {
 
   // Same reps & weight for every set: quick dropdowns. Otherwise (or while editing set by set): a summary.
   let middle;
-  if (uniform && !open) {
+  const cardio = tracking === CARDIO;
+  if (cardio) {
+    // Cardio: time (min : sec), optional distance and intensity; pace appears once there's a distance.
+    const set = it.sets[0] || {};
+    const secs = set.secs === '' || set.secs == null ? '' : +set.secs;
+    const mins = secs === '' ? '' : Math.floor(secs / 60);
+    const ss = secs === '' ? '' : String(secs % 60).padStart(2, '0');
+    const ex = exById(it.exId);
+    const unit = ex ? intensityUnit(ex.intensity) : '';
+    middle = `<div class="item-cardio${unit ? '' : ' no-level'}">
+      <label class="cardio-time"><span class="mini-label">Time</span><span class="time-input"><input class="field" inputmode="numeric" enterkeyhint="next" aria-label="Minutes" placeholder="min" value="${mins}" data-change="cardioField" data-f="min" ${d}><span aria-hidden="true">:</span><input class="field" inputmode="numeric" enterkeyhint="next" aria-label="Seconds" placeholder="00" value="${ss}" data-change="cardioField" data-f="sec" ${d}></span></label>
+      <label><span class="mini-label">Distance</span><span class="unit-wrap"><input class="field" inputmode="decimal" enterkeyhint="next" aria-label="Distance in km" placeholder="—" value="${esc(set.dist ?? '')}" data-change="cardioField" data-f="dist" ${d}><span class="unit">km</span></span></label>
+      ${unit ? `<label><span class="mini-label">${esc(ex.intensity.replace(/ \(.*\)$/, ''))}</span><span class="unit-wrap"><input class="field" inputmode="decimal" enterkeyhint="next" aria-label="${esc(ex.intensity)}" placeholder="—" value="${esc(set.level ?? '')}" data-change="cardioField" data-f="level" ${d}><span class="unit">${unit}</span></span></label>` : ''}
+      <span class="cardio-pace" id="pace-${it.id}">${paceText(set)}</span>
+    </div>`;
+  } else if (uniform && !open) {
     middle = `<label class="item-reps"><span class="mini-label">${tracking === 'Time' ? 'Time' : 'Reps'}</span>${select(`aria-label="Reps" data-change="itemReps" ${d}`, repsOptions(first.reps, tracking === 'Time'))}</label>
     <label class="item-weight"><span class="mini-label">Weight</span>${weightInput(`data-change="itemWeight" ${d}`, first.weight, tracking, 'Weight in kg')}</label>`;
   } else {
@@ -76,15 +95,15 @@ function itemRow(s, it, i, label, next) {
   }
 
   const exLabel = it.exId ? exName(it.exId) : 'exercise ' + (i + 1);
-  return `<div class="item-row${open ? ' has-panel' : ''}" data-row="${it.id}">
+  return `<div class="item-row${open ? ' has-panel' : ''}${cardio ? ' is-cardio' : ''}" data-row="${it.id}">
     <button type="button" class="drag-handle" data-drag ${d} aria-label="Reorder ${esc(exLabel)}: drag, or use the arrow keys" title="Drag to reorder">${icon.grip(18)}</button>
     <div class="item-ex"><button type="button" class="ex-picker${it.exId ? '' : ' empty'}" data-act="openExPicker" ${d} aria-haspopup="dialog" aria-label="Exercise ${i + 1}: ${esc(it.exId ? exName(it.exId) : 'choose')}">${label ? `<span class="ss-label">${label}</span>` : ''}<span class="ex-name">${esc(it.exId ? exName(it.exId) : 'Choose exercise')}</span>${icon.search(16)}</button></div>
-    <label class="item-sets"><span class="mini-label">Sets</span>${select(`aria-label="Sets" data-change="itemSets" ${d}`, setOpts.map((v) => opt(v, v, count)).join(''))}</label>
+    ${cardio ? '' : `<label class="item-sets"><span class="mini-label">Sets</span>${select(`aria-label="Sets" data-change="itemSets" ${d}`, setOpts.map((v) => opt(v, v, count)).join(''))}</label>`}
     ${middle}
     <div class="item-foot">
       <span class="item-hint"><span>${esc(hint)}</span>${best ? `<strong>Best ${esc(best)}</strong>` : ''}</span>
       <span class="item-actions">
-        <button type="button" class="btn-icon sm${open ? ' on' : ''}" data-act="toggleSets" ${d} aria-label="Edit sets one by one" aria-pressed="${open}">${icon.list(16)}</button>
+        ${cardio ? '' : `<button type="button" class="btn-icon sm${open ? ' on' : ''}" data-act="toggleSets" ${d} aria-label="Edit sets one by one" aria-pressed="${open}">${icon.list(16)}</button>`}
         <button type="button" class="btn-icon sm${it.note ? ' has-note' : ''}" data-act="toggleNote" ${d} aria-label="${it.note ? 'Edit note' : 'Add a note'}">${icon.note(16)}</button>
         <button type="button" class="btn-icon sm" data-act="removeItem" ${d} aria-label="Remove exercise">${icon.x(16)}</button>
       </span>
@@ -306,19 +325,59 @@ on('click', 'openExPicker', (el) => {
 function setExercise(s, it, exId) {
   it.exId = exId;
   const ex = exById(it.exId);
-  // Keep reps sensible for the exercise's tracking mode.
-  it.sets.forEach((set) => {
-    if (ex && ex.tracking === 'Time' && !isTimed(set.reps)) set.reps = '60s';
-    if (ex && ex.tracking !== 'Time' && isTimed(set.reps)) set.reps = 10;
-  });
-  // No weights entered yet: start from what they did last time.
-  if (ex && it.sets.every((set) => set.weight === '')) {
-    const prev = [...sessionsFor(s.clientId)].reverse().find((x) => x.id !== s.id && x.status === 'done' && x.items.some((i) => i.exId === ex.id));
-    if (prev) it.sets = prev.items.find((i) => i.exId === ex.id).sets.map((set) => ({ ...set }));
+  const prev = ex && [...sessionsFor(s.clientId)].reverse().find((x) => x.id !== s.id && x.status === 'done' && x.items.some((i) => i.exId === ex.id));
+  const lastSets = prev && prev.items.find((i) => i.exId === ex.id).sets.map((set) => ({ ...set }));
+  const isCardioSet = (set) => set.secs !== undefined && set.reps === undefined;
+  if (ex && ex.tracking === CARDIO) {
+    // One cardio entry: last time's if there was one, otherwise blank.
+    if (!it.sets.some((set) => isCardioSet(set) && +set.secs)) it.sets = lastSets ? lastSets.slice(0, 1) : [{ secs: '', dist: '', level: '' }];
+    it.sets = it.sets.slice(0, 1);
+  } else {
+    if (it.sets.some(isCardioSet)) it.sets = newSets();
+    // Keep reps sensible for the exercise's tracking mode.
+    it.sets.forEach((set) => {
+      if (ex && ex.tracking === 'Time' && !isTimed(set.reps)) set.reps = '60s';
+      if (ex && ex.tracking !== 'Time' && isTimed(set.reps)) set.reps = 10;
+    });
+    // No weights entered yet: start from what they did last time.
+    if (ex && lastSets && it.sets.every((set) => set.weight === '')) it.sets = lastSets;
   }
   save();
   app.rerender();
 }
+
+// "6:15 /km" once both time and distance are filled in.
+function paceText(set) {
+  const t = +set.secs || 0;
+  const km = +set.dist || 0;
+  return t && km ? fmtPace(t / km) : '';
+}
+
+// Cardio fields save as they change, without a redraw (keeps the keyboard up), and update the pace.
+on('change', 'cardioField', (el) => {
+  const { s, it } = itemOf(el);
+  const set = it.sets[0] || (it.sets[0] = { secs: '', dist: '', level: '' });
+  const f = el.dataset.f;
+  if (f === 'min' || f === 'sec') {
+    const row = el.closest('.time-input');
+    const [minEl, secEl] = row.querySelectorAll('input');
+    const m = parseInt(minEl.value, 10);
+    const sec = parseInt(secEl.value, 10);
+    if (isNaN(m) && isNaN(sec)) set.secs = '';
+    else set.secs = Math.max(0, (isNaN(m) ? 0 : m) * 60 + Math.min(59, isNaN(sec) ? 0 : sec));
+    if (set.secs !== '') {
+      minEl.value = Math.floor(set.secs / 60);
+      secEl.value = String(set.secs % 60).padStart(2, '0');
+    }
+  } else {
+    set[f] = parseNum(el.value);
+    el.value = set[f];
+  }
+  save();
+  const pace = document.getElementById('pace-' + it.id);
+  if (pace) pace.textContent = paceText(set);
+  updateSummary(s);
+});
 
 const repsValue = (v) => (isTimed(v) ? v : +v);
 const updateSummary = (s) => {
@@ -638,7 +697,7 @@ on('click', 'completeSession', (el) => {
   // Exercises with a new record in any category (heaviest, best set, best session).
   const newPbs = after.filter((p) => {
     const b = before.find((x) => x.exId === p.exId);
-    return PB_CATEGORIES.some(({ key }) => p[key] && (!b || !b[key] || b[key].display !== p[key].display));
+    return pbKeys().map((key) => ({ key })).some(({ key }) => p[key] && (!b || !b[key] || b[key].display !== p[key].display));
   }).length;
   app.toast(newPbs ? `Logged · personal bests in ${newPbs} exercise${newPbs === 1 ? '' : 's'}` : 'Session logged');
   app.rerender();

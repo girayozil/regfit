@@ -2,7 +2,7 @@
 // one point per completed session, over a chosen date range.
 
 import { esc, on, app, todayISO, fromISO, toISO, fmtShort, select, opt } from '../util.js';
-import { doneFor, exName, exerciseSeries, seriesUnit, PB_CATEGORIES } from '../store.js';
+import { doneFor, exName, exerciseSeries, seriesUnit, lowerIsBetter, trackingOf, PB_CATEGORIES, CARDIO_CATEGORIES, CARDIO } from '../store.js';
 
 const RANGES = [
   ['3m', '3M', 3],
@@ -18,7 +18,21 @@ const monthsAgo = (n) => {
   return toISO(d);
 };
 const days = (a, b) => (fromISO(b) - fromISO(a)) / 86400000;
-const fmtVal = (v, unit) => (Math.round(v * 10) / 10).toLocaleString('en-GB') + (unit === 'reps' ? ' reps' : ' ' + unit);
+// Minutes (time, pace) read as m:ss; everything else as a number with its unit.
+const isClock = (unit) => unit === 'min' || unit === 'min/km';
+const clock = (mins) => {
+  const t = Math.round(mins * 60);
+  return Math.floor(t / 60) + ':' + String(t % 60).padStart(2, '0');
+};
+const fmtVal = (v, unit) => {
+  if (unit === 'min') return clock(v);
+  if (unit === 'min/km') return clock(v) + ' /km';
+  return (Math.round(v * 10) / 10).toLocaleString('en-GB') + (unit === 'reps' ? ' reps' : ' ' + unit);
+};
+// Strength exercises chart Heaviest / Best set / Best session; cardio charts Time / Distance / Pace.
+const categoriesFor = (exId) => (trackingOf(exId) === CARDIO ? CARDIO_CATEGORIES : PB_CATEGORIES);
+// Better = higher, except pace (lower).
+const beats = (a, b, key) => (lowerIsBetter(key) ? a < b : a > b);
 
 // Exercises this client has logged, most-logged first. Ties go to the order of the latest
 // session (its first exercise is usually the main lift), then alphabetical.
@@ -37,6 +51,8 @@ function stateFor(clientId) {
   const ex = loggedExercises(clientId);
   const st = (ui[clientId] = ui[clientId] || { key: 'heaviest', range: 'all' });
   if (!st.exId || !ex.some((e) => e.id === st.exId)) st.exId = ex[0] && ex[0].id;
+  const cats = categoriesFor(st.exId);
+  if (!cats.some((c) => c.key === st.key)) st.key = cats[0].key;
   return { st, ex };
 }
 
@@ -46,11 +62,11 @@ function points(clientId, st) {
   const from = r[2] ? monthsAgo(r[2]) : pts.length ? pts[0].date : todayISO();
   pts = pts.filter((p) => p.date >= from);
   // Mark sessions that set a new record (vs everything before them, in or out of range).
-  let best = -Infinity;
+  let best = null;
   exerciseSeries(clientId, st.exId, st.key).forEach((p) => {
     const hit = pts.find((q) => q.sessionId === p.sessionId);
-    if (p.value > best) {
-      if (hit) hit.record = best !== -Infinity;
+    if (best === null || beats(p.value, best, st.key)) {
+      if (hit) hit.record = best !== null;
       best = p.value;
     }
   });
@@ -61,11 +77,11 @@ function inner(clientId) {
   const { st, ex } = stateFor(clientId);
   if (!ex.length) return `<div class="card-head"><h2>Progress</h2></div><p class="muted pad-y">Charts appear after the first logged session.</p>`;
   const exSelect = select(`aria-label="Exercise" data-change="chartEx" data-client="${clientId}"`, ex.map((e) => opt(e.id, `${e.name} (${e.n})`, st.exId)).join(''));
-  const keyTabs = PB_CATEGORIES.map((c) => `<button type="button" class="seg-btn" data-act="chartKey" data-v="${c.key}" data-client="${clientId}" aria-pressed="${st.key === c.key}">${c.label}</button>`).join('');
+  const keyTabs = categoriesFor(st.exId).map((c) => `<button type="button" class="seg-btn" data-act="chartKey" data-v="${c.key}" data-client="${clientId}" aria-pressed="${st.key === c.key}">${c.label}</button>`).join('');
   const rangeTabs = RANGES.map(([v, label]) => `<button type="button" class="seg-btn" data-act="chartRange" data-v="${v}" data-client="${clientId}" aria-pressed="${st.range === v}">${label}</button>`).join('');
   const { pts } = points(clientId, st);
   const unit = seriesUnit(st.exId, st.key);
-  const cat = PB_CATEGORIES.find((c) => c.key === st.key);
+  const cat = categoriesFor(st.exId).find((c) => c.key === st.key);
   const table = pts.length
     ? `<details class="chart-data"><summary>Show data</summary><table><thead><tr><th>Date</th><th>${esc(cat.label)}</th><th>Detail</th></tr></thead><tbody>${pts
         .slice()
@@ -144,7 +160,7 @@ function draw() {
   const W = Math.max(280, el.clientWidth);
   const H = W < 500 ? 210 : 250;
   const yTicks = niceTicks(Math.min(...pts.map((p) => p.value)), Math.max(...pts.map((p) => p.value)));
-  const fmtTick = (v) => v.toLocaleString('en-GB');
+  const fmtTick = (v) => (isClock(unit) ? clock(v) : v.toLocaleString('en-GB'));
   const padL = 12 + Math.max(...yTicks.map((t) => fmtTick(t).length)) * 7.2;
   const pad = { l: padL, r: 18, t: 26, b: 28 };
   let x0 = from;
@@ -153,7 +169,9 @@ function draw() {
   const sx = (iso) => pad.l + (days(x0, iso) / days(x0, x1)) * (W - pad.l - pad.r);
   const yLo = yTicks[0];
   const yHi = yTicks[yTicks.length - 1];
-  const sy = (v) => pad.t + (1 - (v - yLo) / (yHi - yLo)) * (H - pad.t - pad.b);
+  // Pace is drawn upside down so that faster (better) is higher, like every other chart.
+  const flip = lowerIsBetter(st.key);
+  const sy = (v) => pad.t + (flip ? (v - yLo) / (yHi - yLo) : 1 - (v - yLo) / (yHi - yLo)) * (H - pad.t - pad.b);
 
   const xt = monthTicks(x0, x1, W < 500 ? 4 : 7);
   const spansYears = x0.slice(0, 4) !== x1.slice(0, 4);
@@ -173,7 +191,7 @@ function draw() {
     .join('');
 
   // Direct labels: the best value and the latest one (only once if they're the same point).
-  const maxP = pts.reduce((a, b) => (b.value >= a.value ? b : a));
+  const maxP = pts.reduce((a, b) => (b.value === a.value || beats(b.value, a.value, st.key) ? b : a));
   const lastP = pts[pts.length - 1];
   const label = (p, text) => {
     const x = sx(p.date);

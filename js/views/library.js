@@ -2,10 +2,9 @@
 // muscle, and the editor (side panel on wide screens, its own page on narrow ones).
 
 import { esc, icon, on, app, uid, isWide, select, opt } from '../util.js';
-import { db, exById, usageCount, save, REGION_NAME, EQUIPMENT, TRACKING, muscleCatalog, canonicalMuscle } from '../store.js';
+import { db, exById, usageCount, save, REGION_NAME, REGIONS, EQUIPMENT, TRACKING, CARDIO, INTENSITY, muscleCatalog, canonicalMuscle } from '../store.js';
 
 const ui = { region: 'All', muscle: null, q: '', draft: null }; // draft: unsaved new exercise
-const REGIONS = ['Upper', 'Lower', 'Core'];
 
 function filtered() {
   const q = ui.q.toLowerCase();
@@ -13,6 +12,9 @@ function filtered() {
     .filter((e) => (ui.region === 'All' || e.region === ui.region) && (!ui.muscle || e.muscles.includes(ui.muscle)) && e.name.toLowerCase().includes(q))
     .sort((a, b) => a.name.localeCompare(b.name));
 }
+
+// "Upper body" → shows as "Upper" on phones, where five region buttons have to fit in one row.
+const regionLabel = (label) => (/ body$/.test(label) ? `${label.replace(/ body$/, '')}<span class="lbl-long"> body</span>` : label);
 
 const card = (e, selId) => `<a class="ex-card${e.id === selId ? ' selected' : ''}" href="#/library/${e.id}"${e.id === selId ? ' aria-current="true"' : ''}>
     <span class="ex-name" data-ex-name="${e.id}">${esc(e.name)}</span>
@@ -33,6 +35,10 @@ function sections(selId) {
     const byMuscle = {};
     inRegion.forEach((e) => (byMuscle[e.muscles[0] || 'Other'] = byMuscle[e.muscles[0] || 'Other'] || []).push(e));
     const rank = (m) => (m === 'Other' ? 9999 : cat[r].includes(m) ? cat[r].indexOf(m) : 100 + everywhere.indexOf(m));
+    // Cardio (no muscles to group by) is one plain list.
+    if (r === 'Cardio' || Object.keys(byMuscle).every((m) => m === 'Other')) {
+      return `<section class="lib-section" aria-label="${REGION_NAME[r]}"><h2 class="lib-region">${REGION_NAME[r]} <span>${inRegion.length}</span></h2><div class="ex-grid">${inRegion.map((e) => card(e, selId)).join('')}</div></section>`;
+    }
     const groups = Object.keys(byMuscle)
       .sort((a, b) => rank(a) - rank(b) || a.localeCompare(b))
       .map((m) => `<h3 class="lib-muscle">${esc(m)} <span>${byMuscle[m].length}</span></h3><div class="ex-grid">${byMuscle[m].map((e) => card(e, selId)).join('')}</div>`)
@@ -67,8 +73,8 @@ function editor(e, standalone) {
   }
   const isDraft = e.id === 'new';
   const used = isDraft ? 0 : usageCount(e.id);
-  const regionSeg = ['Upper', 'Lower', 'Core']
-    .map((r) => `<label class="seg-radio"><input type="radio" name="ex-region" value="${r}" data-change="exRegion" data-id="${e.id}"${e.region === r ? ' checked' : ''}><span>${REGION_NAME[r]}</span></label>`)
+  const regionSeg = REGIONS
+    .map((r) => `<label class="seg-radio"><input type="radio" name="ex-region" value="${r}" data-change="exRegion" data-id="${e.id}"${e.region === r ? ' checked' : ''}><span>${regionLabel(REGION_NAME[r])}</span></label>`)
     .join('');
   const regionMuscles = muscleCatalog()[e.region];
   const muscleList = [...regionMuscles, ...e.muscles.filter((m) => !regionMuscles.includes(m))];
@@ -98,12 +104,22 @@ function editor(e, standalone) {
       <label class="field-label">Equipment${select(`data-change="exField" data-f="equipment" data-id="${e.id}"`, (EQUIPMENT.includes(e.equipment) ? EQUIPMENT : [...EQUIPMENT, e.equipment]).map((x) => opt(x, x, e.equipment)).join(''))}</label>
       <label class="field-label">Track by${select(`data-change="exField" data-f="tracking" data-id="${e.id}"`, TRACKING.map((x) => opt(x, x, e.tracking)).join(''))}</label>
     </div>
+    ${
+      e.tracking === CARDIO
+        ? `<label class="field-label">Intensity <span class="hint">· optional number logged with time and distance</span>${select(`data-change="exField" data-f="intensity" data-id="${e.id}"`, ['', ...INTENSITY].map((x) => opt(x, x || 'None', e.intensity || '')).join(''))}</label>`
+        : ''
+    }
     <label class="field-label">Coaching cues<textarea class="field" rows="3" placeholder="e.g. Shoulder blades back, control the lowering" data-input="exCues" data-id="${e.id}">${esc(e.cues || '')}</textarea></label>
     ${foot}
   </aside>`;
 }
 
-const blankDraft = () => ({ id: 'new', name: '', region: ui.region === 'All' ? 'Upper' : ui.region, muscles: [], equipment: 'Dumbbells', tracking: 'Weight × reps', cues: '' });
+const blankDraft = () => {
+  const region = ui.region === 'All' ? 'Upper' : ui.region;
+  return region === 'Cardio'
+    ? { id: 'new', name: '', region, muscles: [], equipment: 'Machine', tracking: CARDIO, intensity: '', cues: '' }
+    : { id: 'new', name: '', region, muscles: [], equipment: 'Dumbbells', tracking: 'Weight × reps', cues: '' };
+};
 
 export function render(selId) {
   if (selId === 'new' && !ui.draft) ui.draft = blankDraft();
@@ -117,8 +133,8 @@ export function render(selId) {
       ${editor(sel, true)}`;
   }
 
-  const regions = [['All', 'All'], ['Upper', 'Upper body'], ['Lower', 'Lower body'], ['Core', 'Core']]
-    .map(([id, label]) => `<button type="button" class="seg-btn" data-act="libRegion" data-v="${id}" aria-pressed="${ui.region === id}">${label}</button>`)
+  const regions = [['All', 'All'], ...REGIONS.map((r) => [r, REGION_NAME[r]])]
+    .map(([id, label]) => `<button type="button" class="seg-btn" data-act="libRegion" data-v="${id}" aria-pressed="${ui.region === id}">${regionLabel(label)}</button>`)
     .join('');
 
   return `
@@ -182,6 +198,11 @@ on('change', 'exNameDone', (el) => {
 on('change', 'exRegion', (el) => {
   const e = exOf(el);
   e.region = el.value;
+  // Moving into or out of Cardio switches how it's tracked to match (still changeable below).
+  if (e.region === 'Cardio' && e.tracking !== CARDIO) {
+    e.tracking = CARDIO;
+    e.intensity = e.intensity || '';
+  } else if (e.region !== 'Cardio' && e.tracking === CARDIO) e.tracking = 'Weight × reps';
   commit(e);
   app.rerender();
 });

@@ -1,7 +1,7 @@
 // Data layer: persistence in localStorage, demo seed data, and derived queries
 // (personal bests, last-time hints, next/last sessions).
 
-import { uid, todayISO, addDays, fromISO, fmtShort, fmtKg, isTimed, repsLabel, timeToMin, nowMinutes } from './util.js';
+import { uid, todayISO, addDays, fromISO, fmtShort, fmtKg, isTimed, repsLabel, timeToMin, nowMinutes, fmtDuration, fmtKm, fmtPace } from './util.js';
 
 const KEY = 'regfit.data.v1';
 
@@ -9,10 +9,16 @@ export const MUSCLES = {
   Upper: ['Chest', 'Back', 'Shoulders', 'Biceps', 'Triceps', 'Forearms', 'Traps'],
   Lower: ['Quads', 'Hamstrings', 'Glutes', 'Calves', 'Adductors'],
   Core: ['Abs', 'Obliques', 'Lower back'],
+  Cardio: [],
 };
-export const REGION_NAME = { Upper: 'Upper body', Lower: 'Lower body', Core: 'Core' };
+export const REGIONS = ['Upper', 'Lower', 'Core', 'Cardio'];
+export const REGION_NAME = { Upper: 'Upper body', Lower: 'Lower body', Core: 'Core', Cardio: 'Cardio' };
 export const EQUIPMENT = ['Barbell', 'Dumbbells', 'Machine', 'Cable', 'Kettlebell', 'Plate', 'Bodyweight', 'Band', 'Smith machine'];
-export const TRACKING = ['Weight × reps', 'Reps only', 'Time'];
+// Cardio is logged as time, with optional distance (pace follows) and one optional intensity number
+// whose label is set per exercise.
+export const CARDIO = 'Time & distance';
+export const TRACKING = ['Weight × reps', 'Reps only', 'Time', CARDIO];
+export const INTENSITY = ['Speed (km/h)', 'Level', 'Incline (%)', 'Watts'];
 
 const LIBRARY = [
   ['Barbell Bench Press', 'Upper', 'Chest, Triceps, Shoulders', 'Barbell'],
@@ -51,20 +57,55 @@ const LIBRARY = [
   ['Cable Woodchopper', 'Core', 'Obliques', 'Cable'],
   ['Russian Twist', 'Core', 'Obliques, Abs', 'Plate'],
   ['Back Extension', 'Core', 'Lower back, Glutes', 'Bodyweight', 'Reps only'],
+  // name, region, muscles, equipment, tracking, intensity label
+  ['Treadmill', 'Cardio', '', 'Machine', CARDIO, 'Speed (km/h)'],
+  ['Outdoor Run', 'Cardio', '', 'Bodyweight', CARDIO, ''],
+  ['Exercise Bike', 'Cardio', '', 'Machine', CARDIO, 'Level'],
+  ['Assault Bike', 'Cardio', '', 'Machine', CARDIO, 'Watts'],
+  ['Rower', 'Cardio', '', 'Machine', CARDIO, 'Watts'],
+  ['Cross-trainer', 'Cardio', '', 'Machine', CARDIO, 'Level'],
+  ['Stair Climber', 'Cardio', '', 'Machine', CARDIO, 'Level'],
+  ['Ski Erg', 'Cardio', '', 'Machine', CARDIO, 'Watts'],
+  ['Jump Rope', 'Cardio', '', 'Bodyweight', CARDIO, ''],
 ];
 
 const slug = (s) => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 
 const libraryExercises = () =>
-  LIBRARY.map(([name, region, muscles, equipment, tracking]) => ({
+  LIBRARY.map(([name, region, muscles, equipment, tracking, intensity]) => ({
     id: 'ex-' + slug(name),
     name,
     region,
-    muscles: muscles.split(', '),
+    muscles: muscles ? muscles.split(', ') : [],
     equipment,
     tracking: tracking || 'Weight × reps',
+    ...(tracking === CARDIO ? { intensity: intensity || '' } : {}),
     cues: '',
   }));
+
+// Built-in cardio exercises, for libraries created before the Cardio category existed.
+export const cardioBuiltins = () => libraryExercises().filter((e) => e.region === 'Cardio');
+
+// Add the built-in cardio exercises to an older library, once per account on this device
+// (so one deleted later isn't brought back). Returns true when something was added.
+export function addMissingCardio(flagKey) {
+  try {
+    if (localStorage.getItem(flagKey)) return false;
+  } catch (e) {
+    /* storage unavailable: still add, it's idempotent by id */
+  }
+  const missing = cardioBuiltins().filter((b) => !db.exercises.some((e) => e.id === b.id));
+  if (missing.length) {
+    db.exercises.push(...missing);
+    save();
+  }
+  try {
+    localStorage.setItem(flagKey, '1');
+  } catch (e) {
+    /* ignore */
+  }
+  return missing.length > 0;
+}
 
 // ---------- demo seed ----------
 //
@@ -228,6 +269,21 @@ export function demoData() {
     const variant = {};
     const lastDoneOn = {};
     let turn = ci % 2;
+    // Cardio finishers: Sarah (half-marathon) runs on the treadmill after lower-body days,
+    // Tom rides the exercise bike every session. Slowly getting longer and faster.
+    let cardioCount = 0;
+    const cardio = (planned) => {
+      const k = planned ? cardioCount : cardioCount++;
+      if (key === 'sarah') {
+        const secs = Math.min(1800, 1200 + k * 30);
+        const speed = Math.round((9.5 + k * 0.05 + (rand() - 0.5) * 0.4) * 2) / 2;
+        return { id: uid('it'), exId: 'ex-treadmill', sets: [{ secs, dist: Math.round(((speed * secs) / 3600) * 100) / 100, level: speed }] };
+      }
+      const secs = 900;
+      const level = Math.min(12, 6 + Math.floor(k / 4));
+      return { id: uid('it'), exId: 'ex-exercise-bike', sets: [{ secs, dist: Math.round((20 + level * 0.8 + (rand() - 0.5)) * 0.25 * 100) / 100, level }] };
+    };
+    const wantsCardio = (focus) => (key === 'sarah' && focus === 'Lower body') || key === 'tom';
     const end = key === 'lucas' ? -45 : 6; // Lucas stopped coming six weeks ago
     for (let off = -history; off <= end; off++) {
       const date = addDays(today, off);
@@ -247,10 +303,12 @@ export function demoData() {
         const light = week % 7 === 6;
         const bad = !light && rand() < 0.1;
         session.items = applySupersets(list.map((ex) => perform(ex, light, bad)));
+        if (wantsCardio(focus)) session.items.push(cardio(false));
         lastDoneOn[focus + v] = date;
       } else if (off <= 2) {
         // Planned in the next few days: already built from the matching previous workout.
         session.items = applySupersets(list.map(preview));
+        if (wantsCardio(focus)) session.items.push(cardio(true));
         session.started = true;
         if (lastDoneOn[focus + v]) session.copiedFrom = fmtShort(lastDoneOn[focus + v]) + ' · ' + focus;
       }
@@ -463,9 +521,9 @@ export const usageCount = (exId) => db.sessions.filter((s) => s.items.some((it) 
 // so there's no separate list to keep in sync.
 
 export function muscleCatalog() {
-  const out = { Upper: [...MUSCLES.Upper], Lower: [...MUSCLES.Lower], Core: [...MUSCLES.Core] };
+  const out = Object.fromEntries(REGIONS.map((r) => [r, [...MUSCLES[r]]]));
   const known = new Set(Object.values(out).flat().map((m) => m.toLowerCase()));
-  const custom = { Upper: [], Lower: [], Core: [] };
+  const custom = Object.fromEntries(REGIONS.map((r) => [r, []]));
   db.exercises.forEach((e) =>
     e.muscles.forEach((m) => {
       if (known.has(m.toLowerCase())) return;
@@ -495,9 +553,32 @@ export const isUniform = (it) => it.sets.every((x) => String(x.reps) === String(
 export const newSets = (n = 3, reps = 10, weight = '') => Array.from({ length: n }, () => ({ reps, weight }));
 
 // Whole exercise: "70 kg × 10" when every set is the same, else each set: "60 kg × 12, 70 kg × 10, …".
+// One cardio entry: "20:00 · 3.2 km · 6:15 /km · Level 8" (distance, pace and intensity when given).
+export function cardioText(set, ex, withIntensity = true) {
+  const t = +set.secs || 0;
+  const d = +set.dist || 0;
+  const parts = [fmtDuration(t)];
+  if (d) parts.push(fmtKm(d));
+  if (d && t) parts.push(fmtPace(t / d));
+  if (withIntensity && ex && set.level !== '' && set.level != null) parts.push(intensityText(ex.intensity, set.level));
+  return parts.join(' · ');
+}
+
+// "12 km/h", "Level 8", "5% incline", "200 W".
+export function intensityText(label, v) {
+  if (!label) return '';
+  if (label.startsWith('Speed')) return v + ' km/h';
+  if (label.startsWith('Incline')) return v + '% incline';
+  if (label === 'Watts') return v + ' W';
+  return 'Level ' + v;
+}
+// Short unit shown inside the intensity field.
+export const intensityUnit = (label) => ({ 'Speed (km/h)': 'km/h', Level: 'lvl', 'Incline (%)': '%', Watts: 'W' })[label] || '';
+
 export function itemSummary(it) {
   const tracking = trackingOf(it.exId);
   if (!it.sets.length) return '';
+  if (tracking === CARDIO) return it.sets.map((x) => cardioText(x, exById(it.exId))).join(', ');
   if (isUniform(it)) return describe(it.sets[0], tracking);
   return it.sets.map((x) => describe(x, tracking)).join(', ');
 }
@@ -505,6 +586,10 @@ export function itemSummary(it) {
 // Compact parts for tables: work = "3 × 10" or "12 · 10 · 10", load = "70 kg" or "60–70 kg".
 export function itemParts(it) {
   const tracking = trackingOf(it.exId);
+  if (tracking === CARDIO) {
+    const set = it.sets[0] || {};
+    return { work: fmtDuration(set.secs), load: +set.dist ? fmtKm(set.dist) : '—' };
+  }
   const n = it.sets.length;
   const reps = it.sets.map((x) => repsLabel(x.reps));
   const sameReps = reps.every((r) => r === reps[0]);
@@ -533,6 +618,15 @@ export const PB_CATEGORIES = [
   { key: 'bestSession', label: 'Best session', help: 'Most weight × reps across all sets in one session' },
 ];
 
+// Cardio records: kept apart from the strength categories above.
+export const CARDIO_CATEGORIES = [
+  { key: 'longest', label: 'Longest', help: 'Longest time in one go' },
+  { key: 'farthest', label: 'Farthest', help: 'Longest distance in one go' },
+  { key: 'pace', label: 'Pace', help: 'Fastest pace (min/km)' },
+];
+const ALL_CATEGORIES = [...PB_CATEGORIES, ...CARDIO_CATEGORIES];
+export const pbKeys = () => ALL_CATEGORIES.map((c) => c.key);
+
 const repsNum = (r) => (isTimed(r) ? 0 : +r || 0);
 const secsNum = (r) => (isTimed(r) ? parseInt(r, 10) || 0 : 0);
 const fmtNum = (n) => (Math.round(n * 10) / 10).toLocaleString('en-GB');
@@ -541,6 +635,7 @@ const better = (a, b) => a[0] > b[0] || (a[0] === b[0] && a[1] > b[1]);
 
 // One set, e.g. "70 kg × 10", "12 reps", "60 s".
 export function describe(item, tracking) {
+  if (tracking === CARDIO) return cardioText(item, null);
   if (tracking === 'Time') return repsLabel(item.reps);
   if (tracking === 'Reps only') return repsLabel(item.reps) + (isTimed(item.reps) ? '' : ' reps');
   return (item.weight === '' || item.weight == null ? 'BW' : fmtKg(item.weight)) + ' × ' + repsLabel(item.reps);
@@ -552,6 +647,16 @@ function itemRecords(it, tracking) {
   const take = (key, sc, display, detail = '') => {
     if (sc[0] > 0 && (!out[key] || better(sc, out[key].sc))) out[key] = { sc, display, detail };
   };
+  if (tracking === CARDIO) {
+    it.sets.forEach((set) => {
+      const t = +set.secs || 0;
+      const d = +set.dist || 0;
+      take('longest', [t, d], fmtDuration(t), d ? fmtKm(d) : '');
+      if (d) take('farthest', [d, t], fmtKm(d), fmtDuration(t));
+      if (d && t) take('pace', [(3600 * d) / t, d], fmtPace(t / d), fmtKm(d) + ' in ' + fmtDuration(t)); // score = speed
+    });
+    return out;
+  }
   let total = 0;
   it.sets.forEach((set) => {
     const w = +set.weight || 0;
@@ -601,11 +706,12 @@ export function personalBests(clientId) {
   return Object.entries(best)
     .map(([exId, b]) => {
       const pb = { exId, name: exName(exId), tracking: trackingOf(exId) };
-      PB_CATEGORIES.forEach(({ key }) => {
+      pb.cardio = pb.tracking === CARDIO;
+      ALL_CATEGORIES.forEach(({ key }) => {
         const r = b[key];
         pb[key] = r ? { display: r.display, detail: r.detail, date: r.date, isNew: r.improved && r.date === lastDate } : null;
       });
-      pb.isNew = PB_CATEGORIES.some(({ key }) => pb[key] && pb[key].isNew);
+      pb.isNew = ALL_CATEGORIES.some(({ key }) => pb[key] && pb[key].isNew);
       return pb;
     })
     .sort((a, b) => a.name.localeCompare(b.name));
@@ -623,14 +729,25 @@ export function exerciseSeries(clientId, exId, key) {
         const r = itemRecords(it, tracking)[key];
         if (r && (!best || better(r.sc, best.sc))) best = r;
       });
-    if (best) out.push({ date: s.date, sessionId: s.id, value: best.sc[0], display: best.display, detail: best.detail });
+    if (!best) return;
+    // Cardio plots minutes (time), km (distance) or minutes per km (pace, lower is better).
+    let value = best.sc[0];
+    if (key === 'longest') value = best.sc[0] / 60;
+    if (key === 'pace') value = 60 / best.sc[0];
+    out.push({ date: s.date, sessionId: s.id, value, display: best.display, detail: best.detail });
   });
   return out;
 }
 
+// For pace, a lower value is the better one.
+export const lowerIsBetter = (key) => key === 'pace';
+
 // Unit of a series' values: weight for weight-tracked exercises and for "Heaviest", else reps / seconds.
 export function seriesUnit(exId, key) {
   const tracking = trackingOf(exId);
+  if (key === 'longest') return 'min';
+  if (key === 'farthest') return 'km';
+  if (key === 'pace') return 'min/km';
   if (tracking === 'Weight × reps' || key === 'heaviest') return 'kg';
   return tracking === 'Reps only' ? 'reps' : 's';
 }
@@ -639,6 +756,7 @@ export function seriesUnit(exId, key) {
 export function bestFor(clientId, exId) {
   const pb = personalBests(clientId).find((p) => p.exId === exId);
   if (!pb) return null;
+  if (pb.cardio) return (pb.pace || pb.longest || {}).display || null;
   return (pb.heaviest || pb.bestSet || {}).display || null;
 }
 

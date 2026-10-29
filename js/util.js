@@ -63,6 +63,16 @@ export const parseNum = (s) => {
   const n = parseFloat(String(s).replace(',', '.'));
   return isNaN(n) ? '' : n;
 };
+// Cardio formatting: 1200 → "20:00", 3905 → "1:05:05"; pace in seconds per km → "6:15 /km".
+export const fmtDuration = (secs) => {
+  const t = Math.round(+secs || 0);
+  const h = Math.floor(t / 3600);
+  const m = Math.floor((t % 3600) / 60);
+  const s = String(t % 60).padStart(2, '0');
+  return h ? `${h}:${String(m).padStart(2, '0')}:${s}` : `${m}:${s}`;
+};
+export const fmtKm = (km) => (Math.round(+km * 100) / 100).toLocaleString('en-GB') + ' km';
+export const fmtPace = (secsPerKm) => fmtDuration(secsPerKm) + ' /km';
 export const isTimed = (reps) => /s$/.test(String(reps));
 export const repsLabel = (reps) => (isTimed(reps) ? parseInt(reps, 10) + ' s' : String(reps));
 

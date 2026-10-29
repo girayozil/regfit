@@ -1,7 +1,7 @@
 // Client profile: details, upcoming sessions, personal bests, past workouts.
 
 import { esc, icon, on, app, fullName, initials, tint, relDay, fmtShort, monShort, dayNum, fmtMonthYear, todayISO, addDays, fmtKg } from '../util.js';
-import { clientById, sessionsFor, doneFor, nextSession, personalBests, PB_CATEGORIES, groupLabels, exName, itemSummary, totalSets, createSession, copyItems, sessionById, save, sessionEnded } from '../store.js';
+import { clientById, sessionsFor, doneFor, nextSession, personalBests, PB_CATEGORIES, CARDIO, trackingOf, groupLabels, exName, itemSummary, totalSets, createSession, copyItems, sessionById, save, sessionEnded } from '../store.js';
 
 import './export.js';
 import { cardHtml as progressCard } from './chart.js';
@@ -36,9 +36,23 @@ export function render(id) {
       </section>`
     : '';
 
-  const cat = PB_CATEGORIES.find((c) => c.key === ui.pbCat) || PB_CATEGORIES[0];
-  const pbRows = pbs.filter((p) => p[cat.key]);
-  const pbTabs = PB_CATEGORIES.map(
+  // Strength categories, plus a Cardio tab when the client has cardio logged.
+  const cardioPbs = pbs.filter((p) => p.cardio);
+  const tabs = [...PB_CATEGORIES, ...(cardioPbs.length ? [{ key: 'cardio', label: 'Cardio', help: 'Longest time, farthest distance and fastest pace' }] : [])];
+  const cat = tabs.find((c) => c.key === ui.pbCat) || tabs[0];
+  const pbRows =
+    cat.key === 'cardio'
+      ? cardioPbs.map((p) => ({
+          name: p.name,
+          r: {
+            display: p.longest ? p.longest.display : '—',
+            detail: [p.farthest && 'Farthest ' + p.farthest.display, p.pace && 'Pace ' + p.pace.display].filter(Boolean).join(' · '),
+            date: (p.longest || p.farthest || p.pace).date,
+            isNew: p.isNew,
+          },
+        }))
+      : pbs.filter((p) => p[cat.key]).map((p) => ({ name: p.name, r: p[cat.key] }));
+  const pbTabs = tabs.map(
     (c) => `<button type="button" class="seg-btn" data-act="pbCat" data-v="${c.key}" aria-pressed="${c.key === cat.key}">${c.label}</button>`
   ).join('');
   const pbHtml = !pbs.length
@@ -48,8 +62,8 @@ export function render(id) {
        ${
          pbRows.length
            ? `<ul class="pb-list">${pbRows
-               .map((p) => {
-                 const r = p[cat.key];
+               .map(({ name: pName, r }) => {
+                 const p = { name: pName };
                  return `<li>
                    <span class="pb-text"><span class="pb-name">${esc(p.name)}</span><span class="pb-date">${r.detail ? esc(r.detail) + ' · ' : ''}${esc(fmtShort(r.date))}</span></span>
                    ${r.isNew ? '<span class="pill pill-new">New</span>' : ''}
@@ -78,7 +92,8 @@ export function render(id) {
                     ${((labels) => s.items
                       .map((it) => {
                         const n = it.sets.length;
-                        return `<div class="hist-item${labels[it.id] ? ' in-ss' : ''}"><span>${labels[it.id] ? `<b class="ss-label">${labels[it.id]}</b> ` : ''}${esc(exName(it.exId))}</span><span class="muted">${n} set${n === 1 ? '' : 's'}</span><strong>${esc(itemSummary(it))}</strong>${it.note ? `<span class="hist-note">${esc(it.note)}</span>` : ''}</div>`;
+                        const sets = trackingOf(it.exId) === CARDIO ? 'Cardio' : n + ' set' + (n === 1 ? '' : 's');
+                        return `<div class="hist-item${labels[it.id] ? ' in-ss' : ''}"><span>${labels[it.id] ? `<b class="ss-label">${labels[it.id]}</b> ` : ''}${esc(exName(it.exId))}</span><span class="muted">${sets}</span><strong>${esc(itemSummary(it))}</strong>${it.note ? `<span class="hist-note">${esc(it.note)}</span>` : ''}</div>`;
                       })
                       .join(''))(groupLabels(s.items))}
                     <div class="hist-actions">
