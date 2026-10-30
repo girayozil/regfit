@@ -16,9 +16,29 @@ export const REGION_NAME = { Upper: 'Upper body', Lower: 'Lower body', Core: 'Co
 export const EQUIPMENT = ['Barbell', 'Dumbbells', 'Machine', 'Cable', 'Kettlebell', 'Plate', 'Bodyweight', 'Band', 'Smith machine', 'Sled'];
 // "Reps only" and "Time" are bodyweight work: an entered weight is extra load ("+10 kg").
 // "Weight × reps" and "Time & weight" log the load itself ("32 kg × 45 s").
-export const TRACKING = ['Weight × reps', 'Reps only', 'Time', 'Time & weight'];
-export const isTimeTracked = (tracking) => tracking === 'Time' || tracking === 'Time & weight';
+// "Time & intensity" (cardio machines) logs a number such as level or watts in the same slot
+// as the weight; which one is set per exercise.
+export const TRACKING = ['Weight × reps', 'Reps only', 'Time', 'Time & weight', 'Time & intensity'];
+export const isTimeTracked = (tracking) => tracking === 'Time' || tracking === 'Time & weight' || tracking === 'Time & intensity';
 export const isLoadTracked = (tracking) => tracking === 'Weight × reps' || tracking === 'Time & weight';
+export const INTENSITY = ['Level', 'Speed (km/h)', 'Incline (%)', 'Watts', 'Calories'];
+const INTENSITY_UNIT = { Level: '', 'Speed (km/h)': 'km/h', 'Incline (%)': '%', Watts: 'W', Calories: 'cal' };
+const intensityOf = (ex) => (ex && INTENSITY.includes(ex.intensity) ? ex.intensity : 'Level');
+
+// "Level 8", "12 km/h", "5% incline", "450 W", "15 cal".
+export function intensityText(ex, v) {
+  const label = intensityOf(ex);
+  if (label === 'Level') return 'Level ' + v;
+  if (label === 'Incline (%)') return v + '% incline';
+  return v + ' ' + INTENSITY_UNIT[label];
+}
+
+// The number box next to Reps/Time in a session row: weight, or this exercise's intensity.
+export function amountField(ex) {
+  if (!ex || ex.tracking !== 'Time & intensity') return { label: 'Weight', unit: 'kg' };
+  const label = intensityOf(ex);
+  return { label: label.replace(/ \(.*\)$/, ''), unit: INTENSITY_UNIT[label] };
+}
 
 const LIBRARY = [
   ['Barbell Bench Press', 'Upper', 'Chest, Triceps, Shoulders', 'Barbell'],
@@ -60,27 +80,29 @@ const LIBRARY = [
   ["Farmer's Walk", 'Upper', 'Forearms, Traps', 'Dumbbells', 'Time & weight'],
   ['Sled Push', 'Lower', 'Quads, Glutes, Calves', 'Sled', 'Time & weight'],
   ['Sled Pull', 'Lower', 'Hamstrings, Glutes', 'Sled', 'Time & weight'],
-  ['Treadmill', 'Cardio', '', 'Machine', 'Time'],
+  // name, region, muscles, equipment, tracking, intensity
+  ['Treadmill', 'Cardio', '', 'Machine', 'Time & intensity', 'Speed (km/h)'],
   ['Outdoor Run', 'Cardio', '', 'Bodyweight', 'Time'],
-  ['Exercise Bike', 'Cardio', '', 'Machine', 'Time'],
-  ['Assault Bike', 'Cardio', '', 'Machine', 'Time'],
-  ['Rower', 'Cardio', '', 'Machine', 'Time'],
-  ['Cross-trainer', 'Cardio', '', 'Machine', 'Time'],
-  ['Stair Climber', 'Cardio', '', 'Machine', 'Time'],
-  ['Ski Erg', 'Cardio', '', 'Machine', 'Time'],
+  ['Exercise Bike', 'Cardio', '', 'Machine', 'Time & intensity', 'Level'],
+  ['Assault Bike', 'Cardio', '', 'Machine', 'Time & intensity', 'Calories'],
+  ['Rower', 'Cardio', '', 'Machine', 'Time & intensity', 'Watts'],
+  ['Cross-trainer', 'Cardio', '', 'Machine', 'Time & intensity', 'Level'],
+  ['Stair Climber', 'Cardio', '', 'Machine', 'Time & intensity', 'Level'],
+  ['Ski Erg', 'Cardio', '', 'Machine', 'Time & intensity', 'Watts'],
   ['Jump Rope', 'Cardio', '', 'Bodyweight', 'Time'],
 ];
 
 const slug = (s) => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 
 const libraryExercises = () =>
-  LIBRARY.map(([name, region, muscles, equipment, tracking]) => ({
+  LIBRARY.map(([name, region, muscles, equipment, tracking, intensity]) => ({
     id: 'ex-' + slug(name),
     name,
     region,
     muscles: muscles ? muscles.split(', ') : [],
     equipment,
     tracking: tracking || 'Weight × reps',
+    ...(intensity ? { intensity } : {}),
     cues: '',
   }));
 
@@ -271,13 +293,17 @@ export function demoData() {
     const lastDoneOn = {};
     let turn = ci % 2;
     // Finishers: Sarah (half-marathon) runs on the treadmill after lower-body days, building
-    // from 20 to 30 minutes; Tom does farmer's walks, getting heavier, then 15 minutes on the bike.
+    // from 20 to 30 minutes and slowly faster; Tom does farmer's walks, getting heavier, then
+    // 15 minutes on the bike at a rising level.
     let finishCount = 0;
     const finisher = (planned) => {
       const k = planned ? finishCount : finishCount++;
       const item = (ex, sets) => ({ id: uid('it'), exId: 'ex-' + ex, sets });
-      if (key === 'sarah') return [item('treadmill', newSets(1, Math.min(1800, 1200 + Math.floor(k / 12) * 300) + 's'))];
-      return [item('farmer-s-walk', newSets(3, '40s', Math.min(32, 20 + Math.floor(k / 8) * 2))), item('exercise-bike', newSets(1, '900s'))];
+      if (key === 'sarah') {
+        const speed = Math.round((9.5 + k * 0.03 + (rand() - 0.5) * 0.4) * 2) / 2;
+        return [item('treadmill', newSets(1, Math.min(1800, 1200 + Math.floor(k / 12) * 300) + 's', speed))];
+      }
+      return [item('farmer-s-walk', newSets(3, '40s', Math.min(32, 20 + Math.floor(k / 8) * 2))), item('exercise-bike', newSets(1, '900s', Math.min(12, 6 + Math.floor(k / 6))))];
     };
     const wantsFinisher = (focus) => (key === 'sarah' && focus === 'Lower body') || key === 'tom';
     const end = key === 'lucas' ? -45 : 6; // Lucas stopped coming six weeks ago
@@ -478,18 +504,22 @@ function migrate(d) {
       delete it.weight;
     });
   });
-  // Early test builds tracked cardio as "Time & distance" ({ secs, dist, level }); it's plain time now.
-  const timeOnly = new Set();
+  // Early test builds tracked cardio as "Time & distance" ({ secs, dist, level }): now time,
+  // plus intensity where the exercise had one (distance is dropped).
+  const retimed = new Set();
   d.exercises.forEach((e) => {
     if (e.tracking !== 'Time & distance') return;
-    e.tracking = 'Time';
-    delete e.intensity;
-    timeOnly.add(e.id);
+    if (INTENSITY.includes(e.intensity)) e.tracking = 'Time & intensity';
+    else {
+      e.tracking = 'Time';
+      delete e.intensity;
+    }
+    retimed.add(e.id);
   });
-  if (timeOnly.size)
+  if (retimed.size)
     d.sessions.forEach((s) =>
       (s.items || []).forEach((it) => {
-        if (timeOnly.has(it.exId)) it.sets = it.sets.map((x) => (x.secs !== undefined && x.reps === undefined ? { reps: (+x.secs || 60) + 's', weight: '' } : x));
+        if (retimed.has(it.exId)) it.sets = it.sets.map((x) => (x.secs !== undefined && x.reps === undefined ? { reps: (+x.secs || 60) + 's', weight: x.level ?? '' } : x));
       })
     );
   if (!Array.isArray(d.meta)) d.meta = [];
@@ -614,8 +644,9 @@ export const newSets = (n = 3, reps = 10, weight = '') => Array.from({ length: n
 export function itemSummary(it) {
   const tracking = trackingOf(it.exId);
   if (!it.sets.length) return '';
-  if (isUniform(it)) return describe(it.sets[0], tracking);
-  return it.sets.map((x) => describe(x, tracking)).join(', ');
+  const ex = exById(it.exId);
+  if (isUniform(it)) return describe(it.sets[0], tracking, ex);
+  return it.sets.map((x) => describe(x, tracking, ex)).join(', ');
 }
 
 // Compact parts for tables: work = "3 × 10" or "12 · 10 · 10", load = "70 kg" or "60–70 kg".
@@ -630,7 +661,10 @@ export function itemParts(it) {
   if (ws.length) {
     const lo = Math.min(...ws);
     const hi = Math.max(...ws);
-    load = (isLoadTracked(tracking) ? '' : '+') + (lo === hi ? fmtKg(lo) : fmtKg(lo).replace(' kg', '') + '–' + fmtKg(hi));
+    if (tracking === 'Time & intensity') {
+      const ex = exById(it.exId);
+      load = lo === hi ? intensityText(ex, lo) : intensityText(ex, lo + '–' + hi);
+    } else load = (isLoadTracked(tracking) ? '' : '+') + (lo === hi ? fmtKg(lo) : fmtKg(lo).replace(' kg', '') + '–' + fmtKg(hi));
   } else if (tracking === 'Weight × reps') load = 'Bodyweight';
   return { work, load };
 }
@@ -654,9 +688,10 @@ const secsNum = (r) => (isTimed(r) ? parseInt(r, 10) || 0 : 0);
 const fmtNum = (n) => (Math.round(n * 10) / 10).toLocaleString('en-GB');
 const better = (a, b) => a[0] > b[0] || (a[0] === b[0] && a[1] > b[1]);
 
-// One set, e.g. "70 kg × 10", "12 reps", "60 s", "32 kg × 45 s".
-export function describe(item, tracking) {
+// One set, e.g. "70 kg × 10", "12 reps", "60 s", "32 kg × 45 s", "20 min · Level 8".
+function describe(item, tracking, ex) {
   if (tracking === 'Time') return repsLabel(item.reps);
+  if (tracking === 'Time & intensity') return repsLabel(item.reps) + (item.weight === '' || item.weight == null ? '' : ' · ' + intensityText(ex, item.weight));
   if (tracking === 'Time & weight') return (item.weight === '' || item.weight == null ? '' : fmtKg(item.weight) + ' × ') + repsLabel(item.reps);
   if (tracking === 'Reps only') return repsLabel(item.reps) + (isTimed(item.reps) ? '' : ' reps');
   return (item.weight === '' || item.weight == null ? 'BW' : fmtKg(item.weight)) + ' × ' + repsLabel(item.reps);
@@ -665,6 +700,7 @@ export function describe(item, tracking) {
 // This exercise's best candidate per category within one session: { key: { sc, display, detail } }.
 function itemRecords(it, tracking) {
   const out = {};
+  const ex = exById(it.exId);
   const take = (key, sc, display, detail = '') => {
     if (sc[0] > 0 && (!out[key] || better(sc, out[key].sc))) out[key] = { sc, display, detail };
   };
@@ -682,10 +718,11 @@ function itemRecords(it, tracking) {
       take('bestSet', [r, w], r + ' reps', w > 0 ? '+' + fmtKg(w) : '');
       total += r;
     } else {
-      // Time: longest set; Time & weight's load is the weight itself, Time's is extra on bodyweight.
-      const kg = (tracking === 'Time' ? '+' : '') + fmtKg(w);
-      take('heaviest', [w, t], kg + ' × ' + fmtSecs(t));
-      take('bestSet', [t, w], fmtSecs(t), w > 0 ? kg : '');
+      // Time: longest set. The number is the load (Time & weight), extra on bodyweight (Time)
+      // or intensity (Time & intensity), where "heaviest" means the highest intensity.
+      const amount = tracking === 'Time & intensity' ? intensityText(ex, w) : (tracking === 'Time' ? '+' : '') + fmtKg(w);
+      take('heaviest', [w, t], amount + (tracking === 'Time & intensity' ? ' · ' : ' × ') + fmtSecs(t));
+      take('bestSet', [t, w], fmtSecs(t), w > 0 ? amount : '');
       total += t;
     }
   });
@@ -750,10 +787,11 @@ export function exerciseSeries(clientId, exId, key) {
   return out;
 }
 
-// Unit of a series' values: weight for weight-tracked exercises and for "Heaviest", else reps,
-// or time: seconds, minutes for cardio.
+// Unit of a series' values: weight for weight-tracked exercises and for "Heaviest" (or the
+// intensity's unit), else reps, or time: seconds, minutes for cardio.
 export function seriesUnit(exId, key) {
   const tracking = trackingOf(exId);
+  if (tracking === 'Time & intensity' && key === 'heaviest') return amountField(exById(exId)).unit || 'level';
   if (tracking === 'Weight × reps' || key === 'heaviest') return 'kg';
   if (tracking === 'Reps only') return 'reps';
   return (exById(exId) || {}).region === 'Cardio' ? 'min' : 's';

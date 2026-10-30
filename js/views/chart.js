@@ -18,7 +18,11 @@ const monthsAgo = (n) => {
   return toISO(d);
 };
 const days = (a, b) => (fromISO(b) - fromISO(a)) / 86400000;
-const fmtVal = (v, unit) => (Math.round(v * 10) / 10).toLocaleString('en-GB') + (unit === 'reps' ? ' reps' : ' ' + unit);
+const fmtVal = (v, unit) => {
+  const n = (Math.round(v * 10) / 10).toLocaleString('en-GB');
+  if (unit === 'level') return 'Level ' + n;
+  return n + (unit === '%' ? '%' : ' ' + unit);
+};
 
 // Exercises this client has logged, most-logged first. Ties go to the order of the latest
 // session (its first exercise is usually the main lift), then alphabetical.

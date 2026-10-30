@@ -2,7 +2,7 @@
 // exercise rows with dropdowns, and logging the session as done.
 
 import { esc, icon, on, app, uid, fullName, initials, tint, relDay, fmtShort, todayISO, isTimed, repsLabel, parseNum, select, opt, minToTime } from '../util.js';
-import { db, sessionById, clientById, sessionsFor, sessionNumber, exById, exName, lastFor, bestFor, personalBests, copyItems, deleteSession, save, PB_CATEGORIES, isTimeTracked, isLoadTracked, normalizeGroups, blocksOf, groupLabels, isUniform, itemParts, totalSets, newSets, trackingOf } from '../store.js';
+import { db, sessionById, clientById, sessionsFor, sessionNumber, exById, exName, lastFor, bestFor, personalBests, copyItems, deleteSession, save, PB_CATEGORIES, isTimeTracked, isLoadTracked, amountField, normalizeGroups, blocksOf, groupLabels, isUniform, itemParts, totalSets, newSets, trackingOf } from '../store.js';
 import { sessionStatus } from './today.js';
 import { openPicker } from './expicker.js';
 
@@ -30,23 +30,30 @@ const summaryText = (s) => {
   return `${n} exercise${n === 1 ? '' : 's'} · ${sets} set${sets === 1 ? '' : 's'}`;
 };
 
-const weightInput = (attrs, value, tracking, label) =>
-  `<span class="unit-wrap"><input class="field" inputmode="decimal" enterkeyhint="next" aria-label="${label}" placeholder="${isLoadTracked(tracking) ? '0' : 'BW'}" value="${esc(value)}" ${attrs}><span class="unit">kg</span></span>`;
+// The number next to reps/time: weight in kg, or the exercise's intensity (level, km/h, W…).
+const amountInput = (attrs, value, ex, label) => {
+  const tracking = ex ? ex.tracking : 'Weight × reps';
+  const { unit } = amountField(ex);
+  const placeholder = tracking === 'Time & intensity' ? '—' : isLoadTracked(tracking) ? '0' : 'BW';
+  return `<span class="unit-wrap"><input class="field" inputmode="decimal" enterkeyhint="next" aria-label="${esc(label)}" placeholder="${placeholder}" value="${esc(value)}" ${attrs}>${unit ? `<span class="unit">${esc(unit)}</span>` : ''}</span>`;
+};
 
 // Set-by-set editor shown under an exercise row.
 function setPanel(it, d, tracking, last) {
+  const ex = exById(it.exId);
+  const amount = amountField(ex).label;
   const rows = it.sets
     .map(
       (set, i) => `<div class="set-row">
         <span class="set-num">Set ${i + 1}</span>
         ${select(`aria-label="Set ${i + 1} ${isTimeTracked(tracking) ? 'time' : 'reps'}" data-change="setField" data-i="${i}" ${d}`, repsOptions(set.reps, isTimeTracked(tracking)))}
-        ${weightInput(`data-change="setWeight" data-i="${i}" ${d}`, set.weight, tracking, 'Set ' + (i + 1) + ' weight in kg')}
+        ${amountInput(`data-change="setWeight" data-i="${i}" ${d}`, set.weight, ex, 'Set ' + (i + 1) + ' ' + amount.toLowerCase())}
         <button type="button" class="btn-icon sm" data-act="removeSet" data-i="${i}" ${d} aria-label="Remove set ${i + 1}"${it.sets.length === 1 ? ' disabled' : ''}>${icon.x(16)}</button>
       </div>`
     )
     .join('');
   return `<div class="set-panel">
-    <div class="set-head" aria-hidden="true"><span></span><span>${isTimeTracked(tracking) ? 'Time' : 'Reps'}</span><span>Weight</span><span></span></div>
+    <div class="set-head" aria-hidden="true"><span></span><span>${isTimeTracked(tracking) ? 'Time' : 'Reps'}</span><span>${esc(amount)}</span><span></span></div>
     ${rows}
     <div class="set-foot">
       <button type="button" class="btn btn-sm btn-outline" data-act="addSet" ${d}>${icon.plus(14)}Add set</button>
@@ -58,6 +65,8 @@ function setPanel(it, d, tracking, last) {
 // label: superset label like 'A1' (or undefined); next: the exercise below, for the link button.
 function itemRow(s, it, i, label, next) {
   const tracking = trackingOf(it.exId);
+  const ex = exById(it.exId);
+  const amount = amountField(ex).label;
   const last = it.exId ? lastFor(s, it.exId) : null;
   const best = it.exId ? bestFor(s.clientId, it.exId) : null;
   // Compact "last time" for the row; the set-by-set panel shows every set in full.
@@ -74,7 +83,7 @@ function itemRow(s, it, i, label, next) {
   let middle;
   if (uniform && !open) {
     middle = `<label class="item-reps"><span class="mini-label">${isTimeTracked(tracking) ? 'Time' : 'Reps'}</span>${select(`aria-label="Reps" data-change="itemReps" ${d}`, repsOptions(first.reps, isTimeTracked(tracking)))}</label>
-    <label class="item-weight"><span class="mini-label">Weight</span>${weightInput(`data-change="itemWeight" ${d}`, first.weight, tracking, 'Weight in kg')}</label>`;
+    <label class="item-weight"><span class="mini-label">${esc(amount)}</span>${amountInput(`data-change="itemWeight" ${d}`, first.weight, ex, amount)}</label>`;
   } else {
     const { work, load } = itemParts(it);
     middle = `<button type="button" class="item-mixed${open ? ' is-open' : ''}" data-act="toggleSets" ${d} aria-expanded="${open}">

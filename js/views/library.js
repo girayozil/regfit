@@ -2,7 +2,7 @@
 // muscle, and the editor (side panel on wide screens, its own page on narrow ones).
 
 import { esc, icon, on, app, uid, isWide, select, opt } from '../util.js';
-import { db, exById, usageCount, save, REGION_NAME, REGIONS, TRACKING, equipmentList, equipmentUsage, addEquipment, renameEquipment, removeEquipment, muscleCatalog, canonicalMuscle } from '../store.js';
+import { db, exById, usageCount, save, REGION_NAME, REGIONS, TRACKING, equipmentList, equipmentUsage, addEquipment, renameEquipment, removeEquipment, INTENSITY, muscleCatalog, canonicalMuscle } from '../store.js';
 
 const ui = { region: 'All', muscle: null, q: '', draft: null }; // draft: unsaved new exercise
 
@@ -109,6 +109,7 @@ function editor(e, standalone) {
         ${select(`id="ex-equipment" data-change="exField" data-f="equipment" data-id="${e.id}"`, ((list) => (list.includes(e.equipment) ? list : [...list, e.equipment]))(equipmentList()).map((x) => opt(x, x, e.equipment)).join(''))}
       </div>
       <label class="field-label">Track by${select(`data-change="exField" data-f="tracking" data-id="${e.id}"`, TRACKING.map((x) => opt(x, x, e.tracking)).join(''))}</label>
+      ${e.tracking === 'Time & intensity' ? `<label class="field-label">Intensity${select(`data-change="exField" data-f="intensity" data-id="${e.id}"`, INTENSITY.map((x) => opt(x, x, e.intensity || 'Level')).join(''))}</label>` : ''}
     </div>
     <label class="field-label">Coaching cues<textarea class="field" rows="3" placeholder="e.g. Shoulder blades back, control the lowering" data-input="exCues" data-id="${e.id}">${esc(e.cues || '')}</textarea></label>
     ${foot}
@@ -118,7 +119,7 @@ function editor(e, standalone) {
 const blankDraft = () => {
   const region = ui.region === 'All' ? 'Upper' : ui.region;
   return region === 'Cardio'
-    ? { id: 'new', name: '', region, muscles: [], equipment: 'Machine', tracking: 'Time', cues: '' }
+    ? { id: 'new', name: '', region, muscles: [], equipment: 'Machine', tracking: 'Time & intensity', intensity: 'Level', cues: '' }
     : { id: 'new', name: '', region, muscles: [], equipment: 'Dumbbells', tracking: 'Weight × reps', cues: '' };
 };
 
@@ -199,8 +200,8 @@ on('change', 'exNameDone', (el) => {
 on('change', 'exRegion', (el) => {
   const e = exOf(el);
   e.region = el.value;
-  // Cardio is tracked by time (still changeable below).
-  if (e.region === 'Cardio') e.tracking = 'Time';
+  // Cardio is tracked by time and intensity (still changeable below).
+  if (e.region === 'Cardio' && !e.tracking.startsWith('Time')) e.tracking = 'Time & intensity';
   commit(e);
   app.rerender();
 });

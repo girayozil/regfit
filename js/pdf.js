@@ -6,7 +6,7 @@
 // (iOS rejects navigator.share after a slow await).
 
 import { fullName, fromISO, todayISO, fmtKg, repsLabel, isTimed } from './util.js';
-import { doneFor, personalBests, PB_CATEGORIES, groupLabels, exName, trackingOf, isUniform, totalSets, isLoadTracked } from './store.js';
+import { doneFor, personalBests, PB_CATEGORIES, groupLabels, exName, exById, trackingOf, isUniform, totalSets, isLoadTracked, intensityText } from './store.js';
 
 let ready = null;
 let fonts = null;
@@ -65,19 +65,22 @@ export function sessionsInRange(clientId, from, to) {
     .reverse();
 }
 
-const setLoad = (set, tracking) => {
+const setLoad = (set, tracking, ex) => {
   const w = set.weight;
   if (tracking === 'Weight × reps') return w === '' || w == null ? 'Bodyweight' : fmtKg(w);
-  return w !== '' && w != null && +w > 0 ? (isLoadTracked(tracking) ? '' : '+') + fmtKg(w) : '—';
+  if (!(w !== '' && w != null && +w > 0)) return '—';
+  if (tracking === 'Time & intensity') return intensityText(ex, w);
+  return (isLoadTracked(tracking) ? '' : '+') + fmtKg(w);
 };
 
 // One table row per exercise; when sets differ, also one sub-row per set.
 function itemCells(it) {
   const tracking = trackingOf(it.exId);
   const name = exName(it.exId);
+  const ex = exById(it.exId);
   if (isUniform(it)) {
     const first = it.sets[0];
-    return { name, work: it.sets.length + ' × ' + repsLabel(first.reps), load: setLoad(first, tracking), sets: null, note: it.note || '' };
+    return { name, work: it.sets.length + ' × ' + repsLabel(first.reps), load: setLoad(first, tracking, ex), sets: null, note: it.note || '' };
   }
   return {
     name,
@@ -87,7 +90,7 @@ function itemCells(it) {
     sets: it.sets.map((set, i) => ({
       label: 'Set ' + (i + 1),
       work: repsLabel(set.reps) + (isTimed(set.reps) ? '' : ' reps'),
-      load: setLoad(set, tracking),
+      load: setLoad(set, tracking, ex),
     })),
   };
 }
