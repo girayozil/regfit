@@ -1,8 +1,8 @@
 // Session editor: when/what, start from scratch or copy a previous session,
 // exercise rows with dropdowns, and logging the session as done.
 
-import { esc, icon, on, app, uid, fmtPace, fullName, initials, tint, relDay, fmtShort, todayISO, isTimed, parseNum, select, opt, minToTime } from '../util.js';
-import { db, sessionById, clientById, sessionsFor, sessionNumber, exById, exName, lastFor, bestFor, personalBests, copyItems, deleteSession, save, pbKeys, CARDIO, intensityUnit, normalizeGroups, blocksOf, groupLabels, isUniform, itemParts, totalSets, newSets, trackingOf } from '../store.js';
+import { esc, icon, on, app, uid, fullName, initials, tint, relDay, fmtShort, todayISO, isTimed, repsLabel, parseNum, select, opt, minToTime } from '../util.js';
+import { db, sessionById, clientById, sessionsFor, sessionNumber, exById, exName, lastFor, bestFor, personalBests, copyItems, deleteSession, save, PB_CATEGORIES, isTimeTracked, isLoadTracked, normalizeGroups, blocksOf, groupLabels, isUniform, itemParts, totalSets, newSets, trackingOf } from '../store.js';
 import { sessionStatus } from './today.js';
 import { openPicker } from './expicker.js';
 
@@ -10,13 +10,17 @@ const TIMES = Array.from({ length: (22 - 5) * 4 + 1 }, (_, i) => minToTime(5 * 6
 const DURATIONS = [30, 45, 60, 75, 90, 120];
 const SETS = Array.from({ length: 10 }, (_, i) => i + 1);
 const REPS = [...Array.from({ length: 30 }, (_, i) => i + 1), 35, 40, 50];
-const TIMED = ['15s', '20s', '30s', '45s', '60s', '75s', '90s', '120s'];
+// Seconds up to 2 minutes, then minutes up to an hour (cardio).
+const TIMED = [15, 20, 30, 45, 60, 75, 90, 120, 180, 240, 300, 360, 480, 600, 720, 900, 1200, 1500, 1800, 2400, 2700, 3600].map((t) => t + 's');
 
 const ui = { copySrc: {}, openSets: new Set() }; // openSets: items showing the set-by-set editor
 
 function repsOptions(selected, timedFirst) {
-  const nums = `<optgroup label="Reps">${REPS.map((r) => opt(r, r, selected)).join('')}</optgroup>`;
-  const timed = `<optgroup label="Timed">${TIMED.map((t) => opt(t, parseInt(t, 10) + ' s', selected)).join('')}</optgroup>`;
+  // A value outside the lists (e.g. from older data) stays selectable.
+  const reps = !isTimed(selected) && selected !== '' && !REPS.includes(+selected) ? [...REPS, +selected].sort((a, b) => a - b) : REPS;
+  const times = isTimed(selected) && !TIMED.includes(selected) ? [...TIMED, selected].sort((a, b) => parseInt(a, 10) - parseInt(b, 10)) : TIMED;
+  const nums = `<optgroup label="Reps">${reps.map((r) => opt(r, r, selected)).join('')}</optgroup>`;
+  const timed = `<optgroup label="Timed">${times.map((t) => opt(t, repsLabel(t), selected)).join('')}</optgroup>`;
   return timedFirst ? timed + nums : nums + timed;
 }
 
@@ -27,7 +31,7 @@ const summaryText = (s) => {
 };
 
 const weightInput = (attrs, value, tracking, label) =>
-  `<span class="unit-wrap"><input class="field" inputmode="decimal" enterkeyhint="next" aria-label="${label}" placeholder="${tracking === 'Weight × reps' ? '0' : 'BW'}" value="${esc(value)}" ${attrs}><span class="unit">kg</span></span>`;
+  `<span class="unit-wrap"><input class="field" inputmode="decimal" enterkeyhint="next" aria-label="${label}" placeholder="${isLoadTracked(tracking) ? '0' : 'BW'}" value="${esc(value)}" ${attrs}><span class="unit">kg</span></span>`;
 
 // Set-by-set editor shown under an exercise row.
 function setPanel(it, d, tracking, last) {
@@ -35,14 +39,14 @@ function setPanel(it, d, tracking, last) {
     .map(
       (set, i) => `<div class="set-row">
         <span class="set-num">Set ${i + 1}</span>
-        ${select(`aria-label="Set ${i + 1} ${tracking === 'Time' ? 'time' : 'reps'}" data-change="setField" data-i="${i}" ${d}`, repsOptions(set.reps, tracking === 'Time'))}
+        ${select(`aria-label="Set ${i + 1} ${isTimeTracked(tracking) ? 'time' : 'reps'}" data-change="setField" data-i="${i}" ${d}`, repsOptions(set.reps, isTimeTracked(tracking)))}
         ${weightInput(`data-change="setWeight" data-i="${i}" ${d}`, set.weight, tracking, 'Set ' + (i + 1) + ' weight in kg')}
         <button type="button" class="btn-icon sm" data-act="removeSet" data-i="${i}" ${d} aria-label="Remove set ${i + 1}"${it.sets.length === 1 ? ' disabled' : ''}>${icon.x(16)}</button>
       </div>`
     )
     .join('');
   return `<div class="set-panel">
-    <div class="set-head" aria-hidden="true"><span></span><span>${tracking === 'Time' ? 'Time' : 'Reps'}</span><span>Weight</span><span></span></div>
+    <div class="set-head" aria-hidden="true"><span></span><span>${isTimeTracked(tracking) ? 'Time' : 'Reps'}</span><span>Weight</span><span></span></div>
     ${rows}
     <div class="set-foot">
       <button type="button" class="btn btn-sm btn-outline" data-act="addSet" ${d}>${icon.plus(14)}Add set</button>
@@ -68,42 +72,27 @@ function itemRow(s, it, i, label, next) {
 
   // Same reps & weight for every set: quick dropdowns. Otherwise (or while editing set by set): a summary.
   let middle;
-  const cardio = tracking === CARDIO;
-  if (cardio) {
-    // Cardio: time (min : sec), optional distance and intensity; pace appears once there's a distance.
-    const set = it.sets[0] || {};
-    const secs = set.secs === '' || set.secs == null ? '' : +set.secs;
-    const mins = secs === '' ? '' : Math.floor(secs / 60);
-    const ss = secs === '' ? '' : String(secs % 60).padStart(2, '0');
-    const ex = exById(it.exId);
-    const unit = ex ? intensityUnit(ex.intensity) : '';
-    middle = `<div class="item-cardio${unit ? '' : ' no-level'}">
-      <label class="cardio-time"><span class="mini-label">Time</span><span class="time-input"><input class="field" inputmode="numeric" enterkeyhint="next" aria-label="Minutes" placeholder="min" value="${mins}" data-change="cardioField" data-f="min" ${d}><span aria-hidden="true">:</span><input class="field" inputmode="numeric" enterkeyhint="next" aria-label="Seconds" placeholder="00" value="${ss}" data-change="cardioField" data-f="sec" ${d}></span></label>
-      <label><span class="mini-label">Distance</span><span class="unit-wrap"><input class="field" inputmode="decimal" enterkeyhint="next" aria-label="Distance in km" placeholder="—" value="${esc(set.dist ?? '')}" data-change="cardioField" data-f="dist" ${d}><span class="unit">km</span></span></label>
-      ${unit ? `<label><span class="mini-label">${esc(ex.intensity.replace(/ \(.*\)$/, ''))}</span><span class="unit-wrap"><input class="field" inputmode="decimal" enterkeyhint="next" aria-label="${esc(ex.intensity)}" placeholder="—" value="${esc(set.level ?? '')}" data-change="cardioField" data-f="level" ${d}><span class="unit">${unit}</span></span></label>` : ''}
-      <span class="cardio-pace" id="pace-${it.id}">${paceText(set)}</span>
-    </div>`;
-  } else if (uniform && !open) {
-    middle = `<label class="item-reps"><span class="mini-label">${tracking === 'Time' ? 'Time' : 'Reps'}</span>${select(`aria-label="Reps" data-change="itemReps" ${d}`, repsOptions(first.reps, tracking === 'Time'))}</label>
+  if (uniform && !open) {
+    middle = `<label class="item-reps"><span class="mini-label">${isTimeTracked(tracking) ? 'Time' : 'Reps'}</span>${select(`aria-label="Reps" data-change="itemReps" ${d}`, repsOptions(first.reps, isTimeTracked(tracking)))}</label>
     <label class="item-weight"><span class="mini-label">Weight</span>${weightInput(`data-change="itemWeight" ${d}`, first.weight, tracking, 'Weight in kg')}</label>`;
   } else {
     const { work, load } = itemParts(it);
     middle = `<button type="button" class="item-mixed${open ? ' is-open' : ''}" data-act="toggleSets" ${d} aria-expanded="${open}">
-      ${open ? '<span>Set by set</span>' : `<span><strong>${esc(work)}</strong>${tracking === 'Time' ? '' : ' reps'}</span><span><strong>${esc(load)}</strong></span>`}
+      ${open ? '<span>Set by set</span>' : `<span><strong>${esc(work)}</strong>${isTimeTracked(tracking) ? '' : ' reps'}</span><span><strong>${esc(load)}</strong></span>`}
       ${open ? icon.up(16) : icon.down(16)}
     </button>`;
   }
 
   const exLabel = it.exId ? exName(it.exId) : 'exercise ' + (i + 1);
-  return `<div class="item-row${open ? ' has-panel' : ''}${cardio ? ' is-cardio' : ''}" data-row="${it.id}">
+  return `<div class="item-row${open ? ' has-panel' : ''}" data-row="${it.id}">
     <button type="button" class="drag-handle" data-drag ${d} aria-label="Reorder ${esc(exLabel)}: drag, or use the arrow keys" title="Drag to reorder">${icon.grip(18)}</button>
     <div class="item-ex"><button type="button" class="ex-picker${it.exId ? '' : ' empty'}" data-act="openExPicker" ${d} aria-haspopup="dialog" aria-label="Exercise ${i + 1}: ${esc(it.exId ? exName(it.exId) : 'choose')}">${label ? `<span class="ss-label">${label}</span>` : ''}<span class="ex-name">${esc(it.exId ? exName(it.exId) : 'Choose exercise')}</span>${icon.search(16)}</button></div>
-    ${cardio ? '' : `<label class="item-sets"><span class="mini-label">Sets</span>${select(`aria-label="Sets" data-change="itemSets" ${d}`, setOpts.map((v) => opt(v, v, count)).join(''))}</label>`}
+    <label class="item-sets"><span class="mini-label">Sets</span>${select(`aria-label="Sets" data-change="itemSets" ${d}`, setOpts.map((v) => opt(v, v, count)).join(''))}</label>
     ${middle}
     <div class="item-foot">
       <span class="item-hint"><span>${esc(hint)}</span>${best ? `<strong>Best ${esc(best)}</strong>` : ''}</span>
       <span class="item-actions">
-        ${cardio ? '' : `<button type="button" class="btn-icon sm${open ? ' on' : ''}" data-act="toggleSets" ${d} aria-label="Edit sets one by one" aria-pressed="${open}">${icon.list(16)}</button>`}
+        <button type="button" class="btn-icon sm${open ? ' on' : ''}" data-act="toggleSets" ${d} aria-label="Edit sets one by one" aria-pressed="${open}">${icon.list(16)}</button>
         <button type="button" class="btn-icon sm${it.note ? ' has-note' : ''}" data-act="toggleNote" ${d} aria-label="${it.note ? 'Edit note' : 'Add a note'}">${icon.note(16)}</button>
         <button type="button" class="btn-icon sm" data-act="removeItem" ${d} aria-label="Remove exercise">${icon.x(16)}</button>
       </span>
@@ -325,59 +314,21 @@ on('click', 'openExPicker', (el) => {
 function setExercise(s, it, exId) {
   it.exId = exId;
   const ex = exById(it.exId);
-  const prev = ex && [...sessionsFor(s.clientId)].reverse().find((x) => x.id !== s.id && x.status === 'done' && x.items.some((i) => i.exId === ex.id));
-  const lastSets = prev && prev.items.find((i) => i.exId === ex.id).sets.map((set) => ({ ...set }));
-  const isCardioSet = (set) => set.secs !== undefined && set.reps === undefined;
-  if (ex && ex.tracking === CARDIO) {
-    // One cardio entry: last time's if there was one, otherwise blank.
-    if (!it.sets.some((set) => isCardioSet(set) && +set.secs)) it.sets = lastSets ? lastSets.slice(0, 1) : [{ secs: '', dist: '', level: '' }];
-    it.sets = it.sets.slice(0, 1);
-  } else {
-    if (it.sets.some(isCardioSet)) it.sets = newSets();
-    // Keep reps sensible for the exercise's tracking mode.
-    it.sets.forEach((set) => {
-      if (ex && ex.tracking === 'Time' && !isTimed(set.reps)) set.reps = '60s';
-      if (ex && ex.tracking !== 'Time' && isTimed(set.reps)) set.reps = 10;
-    });
-    // No weights entered yet: start from what they did last time.
-    if (ex && lastSets && it.sets.every((set) => set.weight === '')) it.sets = lastSets;
+  const timed = ex && isTimeTracked(ex.tracking);
+  // Keep reps sensible for the exercise's tracking mode; cardio starts as one 20-minute block.
+  if (timed && ex.region === 'Cardio' && !it.sets.some((set) => isTimed(set.reps))) it.sets = newSets(1, '1200s');
+  it.sets.forEach((set) => {
+    if (timed && !isTimed(set.reps)) set.reps = '60s';
+    if (ex && !timed && isTimed(set.reps)) set.reps = 10;
+  });
+  // No weights entered yet: start from what they did last time.
+  if (ex && it.sets.every((set) => set.weight === '')) {
+    const prev = [...sessionsFor(s.clientId)].reverse().find((x) => x.id !== s.id && x.status === 'done' && x.items.some((i) => i.exId === ex.id));
+    if (prev) it.sets = prev.items.find((i) => i.exId === ex.id).sets.map((set) => ({ ...set }));
   }
   save();
   app.rerender();
 }
-
-// "6:15 /km" once both time and distance are filled in.
-function paceText(set) {
-  const t = +set.secs || 0;
-  const km = +set.dist || 0;
-  return t && km ? fmtPace(t / km) : '';
-}
-
-// Cardio fields save as they change, without a redraw (keeps the keyboard up), and update the pace.
-on('change', 'cardioField', (el) => {
-  const { s, it } = itemOf(el);
-  const set = it.sets[0] || (it.sets[0] = { secs: '', dist: '', level: '' });
-  const f = el.dataset.f;
-  if (f === 'min' || f === 'sec') {
-    const row = el.closest('.time-input');
-    const [minEl, secEl] = row.querySelectorAll('input');
-    const m = parseInt(minEl.value, 10);
-    const sec = parseInt(secEl.value, 10);
-    if (isNaN(m) && isNaN(sec)) set.secs = '';
-    else set.secs = Math.max(0, (isNaN(m) ? 0 : m) * 60 + Math.min(59, isNaN(sec) ? 0 : sec));
-    if (set.secs !== '') {
-      minEl.value = Math.floor(set.secs / 60);
-      secEl.value = String(set.secs % 60).padStart(2, '0');
-    }
-  } else {
-    set[f] = parseNum(el.value);
-    el.value = set[f];
-  }
-  save();
-  const pace = document.getElementById('pace-' + it.id);
-  if (pace) pace.textContent = paceText(set);
-  updateSummary(s);
-});
 
 const repsValue = (v) => (isTimed(v) ? v : +v);
 const updateSummary = (s) => {
@@ -697,7 +648,7 @@ on('click', 'completeSession', (el) => {
   // Exercises with a new record in any category (heaviest, best set, best session).
   const newPbs = after.filter((p) => {
     const b = before.find((x) => x.exId === p.exId);
-    return pbKeys().map((key) => ({ key })).some(({ key }) => p[key] && (!b || !b[key] || b[key].display !== p[key].display));
+    return PB_CATEGORIES.some(({ key }) => p[key] && (!b || !b[key] || b[key].display !== p[key].display));
   }).length;
   app.toast(newPbs ? `Logged · personal bests in ${newPbs} exercise${newPbs === 1 ? '' : 's'}` : 'Session logged');
   app.rerender();

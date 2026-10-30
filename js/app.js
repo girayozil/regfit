@@ -1,7 +1,7 @@
 // App shell: sign-in gate, hash router, event delegation, toast + modal, cloud sync, service worker.
 
 import { app, handlers, icon, isWide, todayISO } from './util.js';
-import { sessionsOn, startSync, stopSync, applyRemote, flush, markAllUnsynced, replaceData, demoData, emptyData, addMissingCardio, db } from './store.js';
+import { sessionsOn, startSync, stopSync, applyRemote, flush, markAllUnsynced, replaceData, demoData, emptyData, addMissingBuiltins, db } from './store.js';
 import * as auth from './views/auth.js';
 import * as today from './views/today.js';
 import * as clients from './views/clients.js';
@@ -236,8 +236,8 @@ async function signedIn(user) {
     user.uid,
     (name, changes, first) => {
       let changed = applyRemote(name, changes, first);
-      // Libraries set up before the Cardio category get its built-in exercises once.
-      if (name === 'exercises' && first && addMissingCardio('regfit.cardioAdded.' + user.uid)) changed = true;
+      // Older libraries get the newer built-in exercises (cardio, carries, sleds) once.
+      if (name === 'exercises' && first && addMissingBuiltins('regfit.builtinsAdded.' + user.uid)) changed = true;
       if (changed) renderSoon();
     },
     (err) => {
@@ -311,7 +311,7 @@ async function boot() {
     app.account = { email: 'Local test mode', uid: 'dev' };
     startSync('dev', null);
     if (!db.clients.length && !db.sessions.length) replaceData(demoData());
-    addMissingCardio('regfit.cardioAdded.dev');
+    addMissingBuiltins('regfit.builtinsAdded.dev');
     authState = 'in';
     render();
     return;

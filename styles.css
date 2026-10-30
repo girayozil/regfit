@@ -531,7 +531,7 @@ button.choice:hover { border-color: var(--ink); }
 .exercises .card-head { flex-wrap: wrap; }
 .item-head, .item-row {
   display: grid;
-  grid-template-columns: 30px minmax(0, 1.7fr) 76px 92px 110px minmax(0, 1.35fr) 116px;
+  grid-template-columns: 30px minmax(0, 1.7fr) 76px 100px 110px minmax(0, 1.35fr) 116px;
   gap: 10px; align-items: center;
 }
 .item-head { font-size: 11px; font-weight: 800; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; padding: 4px 0 8px; }
@@ -613,20 +613,6 @@ body.is-dragging { user-select: none; -webkit-user-select: none; cursor: grabbin
 .ex-picker:hover { border-color: #9DA39E; }
 .ex-picker.empty { color: var(--muted); font-weight: 600; border-style: dashed; }
 
-/* cardio row: time (min : sec), distance, intensity, pace — spans the Sets/Reps/Weight columns */
-.item-cardio { grid-column: 3 / span 3; display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr) minmax(0, 1fr) auto; gap: 8px; align-items: center; min-width: 0; }
-.item-cardio.no-level { grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr) auto; }
-.item-cardio label { display: block; min-width: 0; }
-.time-input { display: flex; align-items: center; gap: 4px; }
-.time-input .field { padding: 0 6px; text-align: center; min-width: 0; font-variant-numeric: tabular-nums; }
-.time-input > span { font-weight: 800; color: var(--muted); }
-.cardio-pace { font-size: 12px; font-weight: 800; color: var(--ink-2); white-space: nowrap; font-variant-numeric: tabular-nums; min-width: 64px; }
-.cardio-pace:empty { min-width: 0; }
-/* wide rows: cardio fields use the Sets…Last columns, with the last/best hint underneath */
-.item-row.is-cardio .item-cardio { grid-column: 3 / span 4; }
-.item-row.is-cardio .item-hint { grid-column: 3 / span 4; grid-row: 2; flex-direction: row; gap: 10px; flex-wrap: wrap; }
-.item-cardio .unit-wrap .field { padding-right: 46px; }
-
 /* sets that differ (or the set-by-set editor is open): one summary button across Reps + Weight */
 .item-mixed {
   grid-column: 4 / span 2; align-self: stretch; min-height: 46px;
@@ -653,7 +639,8 @@ body.is-dragging { user-select: none; -webkit-user-select: none; cursor: grabbin
 @container (max-width: 760px) {
   .item-head { display: none; }
   .item-row {
-    grid-template-columns: 30px repeat(3, minmax(0, 1fr));
+    /* Time needs room for "45 min"; Sets only ever shows a number */
+    grid-template-columns: 30px minmax(0, 0.8fr) minmax(0, 1.2fr) minmax(0, 1fr);
     grid-template-areas:
       "drag ex ex ex"
       ". sets reps weight"
@@ -669,10 +656,6 @@ body.is-dragging { user-select: none; -webkit-user-select: none; cursor: grabbin
   .item-weight { grid-area: weight; }
 
   .item-mixed { grid-column: 3 / span 2; grid-row: 2; align-self: end; min-height: 46px; }
-  .item-cardio { grid-column: 2 / -1; grid-row: 2; align-items: end; }
-  .item-row.is-cardio .item-cardio { grid-column: 2 / -1; grid-template-columns: repeat(2, minmax(0, 1fr)); row-gap: 8px; }
-  .item-row.is-cardio .item-hint { grid-column: auto; grid-row: auto; flex-direction: column; gap: 0; }
-  .cardio-pace { align-self: center; padding-top: 18px; }
   .item-note { grid-column: 2 / -1; }
   .set-panel { grid-column: 1 / -1; }
   .set-head, .set-row { grid-template-columns: 46px minmax(0, 1fr) minmax(0, 1fr) 40px; }

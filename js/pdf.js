@@ -5,8 +5,8 @@
 // synchronous and the share sheet still counts as a direct response to the tap
 // (iOS rejects navigator.share after a slow await).
 
-import { fullName, fromISO, todayISO, fmtKg, repsLabel, fmtDuration, fmtKm, fmtPace } from './util.js';
-import { doneFor, personalBests, PB_CATEGORIES, groupLabels, exName, exById, trackingOf, isUniform, totalSets, CARDIO, intensityText } from './store.js';
+import { fullName, fromISO, todayISO, fmtKg, repsLabel, isTimed } from './util.js';
+import { doneFor, personalBests, PB_CATEGORIES, groupLabels, exName, trackingOf, isUniform, totalSets, isLoadTracked } from './store.js';
 
 let ready = null;
 let fonts = null;
@@ -68,22 +68,13 @@ export function sessionsInRange(clientId, from, to) {
 const setLoad = (set, tracking) => {
   const w = set.weight;
   if (tracking === 'Weight × reps') return w === '' || w == null ? 'Bodyweight' : fmtKg(w);
-  return w !== '' && w != null && +w > 0 ? '+' + fmtKg(w) : '—';
+  return w !== '' && w != null && +w > 0 ? (isLoadTracked(tracking) ? '' : '+') + fmtKg(w) : '—';
 };
 
 // One table row per exercise; when sets differ, also one sub-row per set.
 function itemCells(it) {
   const tracking = trackingOf(it.exId);
   const name = exName(it.exId);
-  if (tracking === CARDIO) {
-    // Cardio: time (+ intensity) in the middle column, distance and pace on the right.
-    const set = it.sets[0] || {};
-    const ex = exById(it.exId);
-    const t = +set.secs || 0;
-    const d = +set.dist || 0;
-    const level = ex && ex.intensity && set.level !== '' && set.level != null ? ' · ' + intensityText(ex.intensity, set.level) : '';
-    return { name, work: fmtDuration(t) + level, load: d ? fmtKm(d) + (t ? ' · ' + fmtPace(t / d) : '') : '—', sets: null, note: it.note || '' };
-  }
   if (isUniform(it)) {
     const first = it.sets[0];
     return { name, work: it.sets.length + ' × ' + repsLabel(first.reps), load: setLoad(first, tracking), sets: null, note: it.note || '' };
@@ -95,7 +86,7 @@ function itemCells(it) {
     load: '',
     sets: it.sets.map((set, i) => ({
       label: 'Set ' + (i + 1),
-      work: repsLabel(set.reps) + (tracking === 'Time' ? '' : ' reps'),
+      work: repsLabel(set.reps) + (isTimed(set.reps) ? '' : ' reps'),
       load: setLoad(set, tracking),
     })),
   };
@@ -206,7 +197,7 @@ export function buildClientPdf(client, opts) {
   y += 10;
 
   const sessions = opts.history ? sessionsInRange(client.id, opts.from, opts.to) : [];
-  const pbs = personalBests(client.id).filter((p) => !p.cardio); // the table's columns are strength measures
+  const pbs = personalBests(client.id);
 
   // ---- summary tiles (training numbers only) ----
   if (opts.history) {
