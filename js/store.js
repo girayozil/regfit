@@ -228,7 +228,7 @@ export function demoData() {
     ['tom', 'Tom', 'Becker', 52, 'Male', 178, 84, 0.8, [0, 5], ['11:00', '11:00'], 'split', 300, 150, ''],
     ['lucas', 'Lucas', 'Martin', 38, 'Male', 180, 79, 0.9, [1, 4], ['17:00', '17:00'], 'split', 140, -1, 'Paused training in August — follow up.'],
   ];
-  const out = { version: 2, exercises: libraryExercises(), clients: [], sessions: [] };
+  const out = { version: 2, exercises: libraryExercises(), clients: [], sessions: [], meta: [] };
 
   clients.forEach(([key, first, last, age, sex, height, weight, factor, days, times, plan, history, holiday, notes], ci) => {
     const id = 'c-' + key;
@@ -319,7 +319,7 @@ export function demoData() {
 }
 
 export function emptyData() {
-  return { version: 2, exercises: libraryExercises(), clients: [], sessions: [] };
+  return { version: 2, exercises: libraryExercises(), clients: [], sessions: [], meta: [] };
 }
 
 // ---------- persistence & sync ----------
@@ -328,11 +328,13 @@ export function emptyData() {
 // and, when signed in, sends the records that changed to Firestore (debounced).
 // Changes made on another device arrive through applyRemote().
 
-const SYNCED = ['clients', 'sessions', 'exercises'];
+// meta: small account-wide records, e.g. { id: 'equipment', items: [...] }.
+const SYNCED = ['clients', 'sessions', 'exercises', 'meta'];
+const emptySynced = () => Object.fromEntries(SYNCED.map((n) => [n, new Map()]));
 export let db = emptyData();
 let cacheKey = KEY;
 let pushFn = null; // set while signed in: (ops) => Promise
-let synced = { clients: new Map(), sessions: new Map(), exercises: new Map() }; // id -> JSON last seen in the cloud
+let synced = emptySynced(); // per collection: id -> JSON last seen in the cloud
 let pushTimer = null;
 
 // Key-order-independent JSON, so the same record always compares equal.
@@ -372,7 +374,7 @@ export function startSync(uid, push) {
   cacheKey = 'regfit.cloud.' + uid;
   pushFn = push;
   db = readCache(cacheKey) || emptyData();
-  synced = { clients: new Map(), sessions: new Map(), exercises: new Map() };
+  synced = emptySynced();
   SYNCED.forEach((name) => db[name].forEach((x) => synced[name].set(x.id, stable(x))));
 }
 
@@ -422,7 +424,7 @@ export function flush() {
 
 // Treat everything currently in memory as not yet uploaded (account setup).
 export function markAllUnsynced() {
-  synced = { clients: new Map(), sessions: new Map(), exercises: new Map() };
+  synced = emptySynced();
 }
 
 // Changes from Firestore. On the first snapshot the collection is replaced wholesale.
@@ -480,6 +482,7 @@ function migrate(d) {
       delete it.weight;
     });
   });
+  if (!Array.isArray(d.meta)) d.meta = [];
   d.version = 2;
 }
 
@@ -542,6 +545,51 @@ export function canonicalMuscle(name) {
   if (!t) return '';
   const existing = Object.values(muscleCatalog()).flat().find((m) => m.toLowerCase() === t.toLowerCase());
   return existing || t.charAt(0).toUpperCase() + t.slice(1);
+}
+
+// ---------- equipment ----------
+// The account's equipment list (managed from the exercise editor). Until it's first edited, it's
+// the built-in list plus anything the library's exercises already use.
+
+export function equipmentList() {
+  const rec = db.meta.find((m) => m.id === 'equipment');
+  const items = rec ? rec.items : [...EQUIPMENT, ...db.exercises.map((e) => e.equipment)];
+  return [...new Set(items.filter(Boolean))].sort((a, b) => a.localeCompare(b));
+}
+
+function saveEquipment(items) {
+  const rec = db.meta.find((m) => m.id === 'equipment');
+  const sorted = [...new Set(items)].sort((a, b) => a.localeCompare(b));
+  if (rec) rec.items = sorted;
+  else db.meta.push({ id: 'equipment', items: sorted });
+  save();
+}
+
+export const equipmentUsage = (name) => db.exercises.filter((e) => e.equipment === name).length;
+
+// Returns an error message, or '' when done.
+export function addEquipment(name) {
+  const n = String(name || '').trim().replace(/\s+/g, ' ');
+  if (!n) return 'Type a name first';
+  if (equipmentList().some((x) => x.toLowerCase() === n.toLowerCase())) return 'Already in the list';
+  saveEquipment([...equipmentList(), n]);
+  return '';
+}
+
+// Renaming also updates every exercise using it.
+export function renameEquipment(from, to) {
+  const n = String(to || '').trim().replace(/\s+/g, ' ');
+  if (!n || n === from) return '';
+  if (equipmentList().some((x) => x !== from && x.toLowerCase() === n.toLowerCase())) return 'Already in the list';
+  db.exercises.forEach((e) => e.equipment === from && (e.equipment = n));
+  saveEquipment(equipmentList().map((x) => (x === from ? n : x)));
+  return '';
+}
+
+export function removeEquipment(name) {
+  if (equipmentUsage(name)) return 'Still used by exercises';
+  saveEquipment(equipmentList().filter((x) => x !== name));
+  return '';
 }
 
 // ---------- sets ----------

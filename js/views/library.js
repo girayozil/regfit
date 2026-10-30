@@ -2,7 +2,7 @@
 // muscle, and the editor (side panel on wide screens, its own page on narrow ones).
 
 import { esc, icon, on, app, uid, isWide, select, opt } from '../util.js';
-import { db, exById, usageCount, save, REGION_NAME, REGIONS, EQUIPMENT, TRACKING, CARDIO, INTENSITY, muscleCatalog, canonicalMuscle } from '../store.js';
+import { db, exById, usageCount, save, REGION_NAME, REGIONS, TRACKING, equipmentList, equipmentUsage, addEquipment, renameEquipment, removeEquipment, CARDIO, INTENSITY, muscleCatalog, canonicalMuscle } from '../store.js';
 
 const ui = { region: 'All', muscle: null, q: '', draft: null }; // draft: unsaved new exercise
 
@@ -104,7 +104,10 @@ function editor(e, standalone) {
     <div class="field-label"><span id="region-label">Region</span><div class="seg seg-fill" role="radiogroup" aria-labelledby="region-label">${regionSeg}</div></div>
     <div class="field-label"><span>Muscle groups <span class="hint">· the first one picked is the main muscle</span></span><div class="chips">${muscleChips}</div></div>
     <div class="form-grid tight">
-      <label class="field-label">Equipment${select(`data-change="exField" data-f="equipment" data-id="${e.id}"`, (EQUIPMENT.includes(e.equipment) ? EQUIPMENT : [...EQUIPMENT, e.equipment]).map((x) => opt(x, x, e.equipment)).join(''))}</label>
+      <div class="field-label">
+        <span class="label-row"><label for="ex-equipment">Equipment</label><button type="button" class="text-btn" data-act="manageEquipment">Edit list</button></span>
+        ${select(`id="ex-equipment" data-change="exField" data-f="equipment" data-id="${e.id}"`, ((list) => (list.includes(e.equipment) ? list : [...list, e.equipment]))(equipmentList()).map((x) => opt(x, x, e.equipment)).join(''))}
+      </div>
       <label class="field-label">Track by${select(`data-change="exField" data-f="tracking" data-id="${e.id}"`, TRACKING.map((x) => opt(x, x, e.tracking)).join(''))}</label>
     </div>
     ${
@@ -258,6 +261,79 @@ document.addEventListener('keydown', (ev) => {
     ev.preventDefault();
     document.querySelector('[data-act="addMuscle"]').click();
   }
+});
+
+// ---------- equipment list (a quick card from the editor) ----------
+
+function equipmentRows() {
+  return equipmentList()
+    .map((name) => {
+      const n = equipmentUsage(name);
+      return `<div class="equip-row">
+        <input class="field" value="${esc(name)}" aria-label="Equipment name" data-change="renameEquip" data-old="${esc(name)}" autocapitalize="words" autocomplete="off">
+        <span class="equip-uses">${n ? n + ' exercise' + (n === 1 ? '' : 's') : 'Unused'}</span>
+        <button type="button" class="btn-icon sm" data-act="removeEquip" data-v="${esc(name)}" aria-label="Remove ${esc(name)}"${n ? ` disabled title="Used by ${n} exercise${n === 1 ? '' : 's'} — switch them first"` : ''}>${icon.x(16)}</button>
+      </div>`;
+    })
+    .join('');
+}
+
+// Redraw the list in the card, and the page behind it so the Equipment dropdown stays current.
+function refreshEquipment() {
+  const list = document.getElementById('equip-list');
+  if (list) list.innerHTML = equipmentRows();
+  app.rerender();
+}
+
+on('click', 'manageEquipment', () => {
+  app.modal(
+    `<div class="modal-head"><h2>Equipment</h2><button type="button" class="btn-icon" data-act="closeModal" aria-label="Close">${icon.x(18)}</button></div>
+     <p class="muted small">Tap a name to rename it everywhere. Equipment in use can’t be removed.</p>
+     <div class="equip-list" id="equip-list">${equipmentRows()}</div>
+     <div class="equip-add">
+       <input class="field" id="new-equip" placeholder="New equipment" aria-label="New equipment" autocapitalize="words" autocomplete="off" enterkeyhint="done">
+       <button type="button" class="btn btn-dark" data-act="addEquip">${icon.plus(16)}Add</button>
+     </div>`,
+    'Equipment',
+    false,
+    'sheet-top'
+  );
+});
+
+on('click', 'addEquip', () => {
+  const input = document.getElementById('new-equip');
+  const err = addEquipment(input.value);
+  if (err) {
+    app.toast(err);
+    return;
+  }
+  app.toast(`Added ${input.value.trim()}`);
+  input.value = '';
+  refreshEquipment();
+});
+
+document.addEventListener('keydown', (ev) => {
+  if (ev.target && ev.target.id === 'new-equip' && ev.key === 'Enter') {
+    ev.preventDefault();
+    document.querySelector('[data-act="addEquip"]').click();
+  }
+});
+
+on('change', 'renameEquip', (el) => {
+  const from = el.dataset.old;
+  const err = renameEquipment(from, el.value);
+  if (err) {
+    app.toast(err);
+    el.value = from;
+    return;
+  }
+  refreshEquipment();
+});
+
+on('click', 'removeEquip', (el) => {
+  const err = removeEquipment(el.dataset.v);
+  if (err) app.toast(err);
+  refreshEquipment();
 });
 
 on('change', 'exField', (el) => {

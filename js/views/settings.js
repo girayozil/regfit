@@ -83,7 +83,7 @@ on('change', 'importData', (el) => {
 
 on('click', 'eraseData', () => {
   if (!confirm('Erase all clients and sessions from your account, on every device? The exercise library is kept. Export a backup first if you might need them.')) return;
-  replaceData({ ...emptyData(), exercises: db.exercises });
+  replaceData({ ...emptyData(), exercises: db.exercises, meta: db.meta }); // library and equipment list stay
   app.toast('Clients and sessions erased');
   app.rerender();
 });

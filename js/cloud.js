@@ -4,6 +4,7 @@
 //         users/{uid}/clients/{id}
 //         users/{uid}/sessions/{id}
 //         users/{uid}/exercises/{id}
+//         users/{uid}/meta/{id}           — e.g. the equipment list
 // Security rules allow each signed-in user to read/write only users/{their uid}/**.
 //
 // The Firebase web config is public by design; the rules protect the data.
@@ -11,7 +12,7 @@
 const V = '13.0.0';
 const BASE = `https://www.gstatic.com/firebasejs/${V}`;
 
-export const COLLECTIONS = ['clients', 'sessions', 'exercises'];
+export const COLLECTIONS = ['clients', 'sessions', 'exercises', 'meta'];
 
 const firebaseConfig = {
   apiKey: 'AIzaSyDBMpMxpWkLMLR2pTmB4_5pnpxkjwi_UIw',
