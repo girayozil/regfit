@@ -271,7 +271,6 @@ function equipmentRows() {
       const n = equipmentUsage(name);
       return `<div class="equip-row">
         <input class="field" value="${esc(name)}" aria-label="Equipment name" data-change="renameEquip" data-old="${esc(name)}" autocapitalize="words" autocomplete="off">
-        <span class="equip-uses">${n ? n + ' exercise' + (n === 1 ? '' : 's') : 'Unused'}</span>
         <button type="button" class="btn-icon sm" data-act="removeEquip" data-v="${esc(name)}" aria-label="Remove ${esc(name)}"${n ? ` disabled title="Used by ${n} exercise${n === 1 ? '' : 's'} — switch them first"` : ''}>${icon.x(16)}</button>
       </div>`;
     })
