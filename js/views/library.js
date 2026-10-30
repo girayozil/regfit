@@ -13,6 +13,9 @@ function filtered() {
     .sort((a, b) => a.name.localeCompare(b.name));
 }
 
+// Short names for the editor's region switch (four options must fit a narrow panel).
+const REGION_SHORT = { Upper: 'Upper', Lower: 'Lower', Core: 'Core', Cardio: 'Cardio' };
+
 // "Upper body" → shows as "Upper" on phones, where five region buttons have to fit in one row.
 const regionLabel = (label) => (/ body$/.test(label) ? `${label.replace(/ body$/, '')}<span class="lbl-long"> body</span>` : label);
 
@@ -74,7 +77,7 @@ function editor(e, standalone) {
   const isDraft = e.id === 'new';
   const used = isDraft ? 0 : usageCount(e.id);
   const regionSeg = REGIONS
-    .map((r) => `<label class="seg-radio"><input type="radio" name="ex-region" value="${r}" data-change="exRegion" data-id="${e.id}"${e.region === r ? ' checked' : ''}><span>${regionLabel(REGION_NAME[r])}</span></label>`)
+    .map((r) => `<label class="seg-radio"><input type="radio" name="ex-region" value="${r}" data-change="exRegion" data-id="${e.id}"${e.region === r ? ' checked' : ''}><span>${REGION_SHORT[r]}</span></label>`)
     .join('');
   const regionMuscles = muscleCatalog()[e.region];
   const muscleList = [...regionMuscles, ...e.muscles.filter((m) => !regionMuscles.includes(m))];
