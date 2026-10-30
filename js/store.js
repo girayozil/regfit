@@ -804,6 +804,43 @@ export function bestFor(clientId, exId) {
   return (pb.heaviest || pb.bestSet || {}).display || null;
 }
 
+// Short form for hints: "70 kg × 10" when every set is the same, else "60–70 kg × 12 · 10 · 8".
+export function shortSummary(it) {
+  if (isUniform(it)) return itemSummary(it);
+  const { work, load } = itemParts(it);
+  return load === '—' ? work : load + ' × ' + work;
+}
+
+// The sets from the session where the client set their headline record for an exercise: the
+// heaviest set, or for exercises logged without weight, the best set. A tie goes to the latest.
+export function bestSetsFor(clientId, exId) {
+  const tracking = trackingOf(exId);
+  const top = {};
+  doneFor(clientId).forEach((s) =>
+    s.items
+      .filter((it) => it.exId === exId)
+      .forEach((it) => {
+        const recs = itemRecords(it, tracking);
+        ['heaviest', 'bestSet'].forEach((key) => {
+          if (recs[key] && (!top[key] || !better(top[key].sc, recs[key].sc))) top[key] = { sc: recs[key].sc, sets: it.sets };
+        });
+      })
+  );
+  const pick = top.heaviest || top.bestSet;
+  return pick ? pick.sets.map((x) => ({ ...x })) : null;
+}
+
+// Exercises in `session` whose sets differ from the personal-best sets: [{ name, last, best }].
+export function bestsDiffer(session) {
+  const same = (a, b) => a.length === b.length && a.every((x, i) => String(x.reps) === String(b[i].reps) && String(x.weight) === String(b[i].weight));
+  const out = [];
+  session.items.forEach((it) => {
+    const best = it.exId && bestSetsFor(session.clientId, it.exId);
+    if (best && !same(it.sets, best)) out.push({ name: exName(it.exId), last: shortSummary(it), best: shortSummary({ ...it, sets: best }) });
+  });
+  return out;
+}
+
 // Most recent logged item for this exercise, from a done session other than `session`.
 export function lastFor(session, exId) {
   const done = doneFor(session.clientId).filter((s) => s.id !== session.id);
@@ -836,10 +873,12 @@ export function createSession(clientId, date, time) {
   return s;
 }
 
-export function copyItems(fromSession) {
+// withBests: each exercise takes the sets from the client's personal-best session for it.
+export function copyItems(fromSession, withBests = false) {
   const groups = {}; // supersets get fresh group ids in the copy
   return fromSession.items.map((it) => {
-    const copy = { ...it, id: uid('it'), sets: it.sets.map((x) => ({ ...x })) };
+    const best = withBests && it.exId ? bestSetsFor(fromSession.clientId, it.exId) : null;
+    const copy = { ...it, id: uid('it'), sets: (best || it.sets).map((x) => ({ ...x })) };
     if (it.group) copy.group = groups[it.group] = groups[it.group] || uid('g');
     return copy;
   });

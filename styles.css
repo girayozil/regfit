@@ -910,3 +910,12 @@ body.is-offline .action-bar { bottom: calc(60px + var(--tabbar-h) + env(safe-are
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }
+
+/* copying a session: last time vs personal best, per exercise that differs */
+.num-diff { margin: 12px 0 16px; max-height: 50vh; overflow-y: auto; }
+.num-row { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr) minmax(0, 1fr); gap: 10px; padding: 9px 0; border-top: 1px solid var(--line-2); font-size: 14px; align-items: baseline; }
+.num-row > * { min-width: 0; overflow-wrap: anywhere; }
+.num-row > span:first-child { font-weight: 700; }
+.num-row > span:nth-child(2) { color: var(--muted); }
+.num-head { border-top: 0; padding-top: 0; font-size: 11px; font-weight: 800; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; }
+.num-head > span:first-child { font-weight: 800; }

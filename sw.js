@@ -1,6 +1,6 @@
 // Offline support: network-first for the app's own files, falling back to the cache.
 // Bump VERSION when shipping changes that must replace cached files.
-const VERSION = 'regfit-v34';
+const VERSION = 'regfit-v35';
 const SHELL = [
   './',
   'index.html',
@@ -19,6 +19,7 @@ const SHELL = [
   'js/views/chart.js',
   'js/views/auth.js',
   'js/views/expicker.js',
+  'js/views/copychoice.js',
   'js/cloud.js',
   'js/pdf.js',
   'vendor/jspdf.umd.min.js',

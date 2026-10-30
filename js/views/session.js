@@ -2,9 +2,10 @@
 // exercise rows with dropdowns, and logging the session as done.
 
 import { esc, icon, on, app, uid, fullName, initials, tint, relDay, fmtShort, todayISO, isTimed, repsLabel, parseNum, select, opt, minToTime } from '../util.js';
-import { db, sessionById, clientById, sessionsFor, sessionNumber, exById, exName, lastFor, bestFor, personalBests, copyItems, deleteSession, save, PB_CATEGORIES, isTimeTracked, isLoadTracked, amountField, normalizeGroups, blocksOf, groupLabels, isUniform, itemParts, totalSets, newSets, trackingOf } from '../store.js';
+import { db, sessionById, clientById, sessionsFor, sessionNumber, exById, exName, lastFor, bestFor, personalBests, copyItems, deleteSession, save, PB_CATEGORIES, isTimeTracked, isLoadTracked, amountField, normalizeGroups, blocksOf, groupLabels, isUniform, itemParts, shortSummary, totalSets, newSets, trackingOf } from '../store.js';
 import { sessionStatus } from './today.js';
 import { openPicker } from './expicker.js';
+import { pickNumbers } from './copychoice.js';
 
 const TIMES = Array.from({ length: (22 - 5) * 4 + 1 }, (_, i) => minToTime(5 * 60 + i * 15));
 const DURATIONS = [30, 45, 60, 75, 90, 120];
@@ -70,7 +71,7 @@ function itemRow(s, it, i, label, next) {
   const last = it.exId ? lastFor(s, it.exId) : null;
   const best = it.exId ? bestFor(s.clientId, it.exId) : null;
   // Compact "last time" for the row; the set-by-set panel shows every set in full.
-  const lastShort = last && (isUniform(last.item) ? last.display : (({ work, load }) => (load === '—' ? work : load + ' × ' + work))(itemParts(last.item)));
+  const lastShort = last && shortSummary(last.item);
   const hint = !it.exId ? 'Pick an exercise' : last ? 'Last ' + lastShort : 'First time';
   const d = `data-item="${it.id}"`;
   const open = ui.openSets.has(it.id);
@@ -271,13 +272,15 @@ on('click', 'startCopy', (el) => {
   const sel = document.querySelector('[data-change="copySrc"]');
   const src = sessionById(sel ? sel.value : ui.copySrc[s.id]);
   if (!src) return;
-  s.items = copyItems(src);
-  s.started = true;
-  s.copiedFrom = fmtShort(src.date) + (src.focus ? ' · ' + src.focus : '');
-  if (!s.focus) s.focus = src.focus;
-  save();
-  app.toast(`Copied ${src.items.length} exercises`);
-  app.rerender();
+  pickNumbers(src, (withBests) => {
+    s.items = copyItems(src, withBests);
+    s.started = true;
+    s.copiedFrom = fmtShort(src.date) + (src.focus ? ' · ' + src.focus : '') + (withBests ? ' · personal bests' : '');
+    if (!s.focus) s.focus = src.focus;
+    save();
+    app.toast(`Copied ${src.items.length} exercises` + (withBests ? ' at personal bests' : ''));
+    app.rerender();
+  });
 });
 
 on('click', 'changeStart', (el) => {

@@ -4,6 +4,7 @@ import { esc, icon, on, app, fullName, initials, tint, relDay, fmtShort, monShor
 import { clientById, sessionsFor, doneFor, nextSession, personalBests, PB_CATEGORIES, groupLabels, exName, itemSummary, totalSets, createSession, copyItems, sessionById, save, sessionEnded } from '../store.js';
 
 import './export.js';
+import { pickNumbers } from './copychoice.js';
 import { cardHtml as progressCard } from './chart.js';
 
 const ui = { open: {}, pbCat: 'heaviest' }; // open: expanded past session per client; pbCat: personal-best category shown
@@ -163,12 +164,14 @@ on('click', 'scheduleNext', (el) => {
 
 on('click', 'useTemplate', (el) => {
   const src = sessionById(el.dataset.id);
-  const s = createSession(src.clientId, nextDate(src.clientId), src.time);
-  s.items = copyItems(src);
-  s.focus = src.focus;
-  s.duration = src.duration;
-  s.started = true;
-  s.copiedFrom = fmtShort(src.date) + (src.focus ? ' · ' + src.focus : '');
-  save();
-  app.go('#/session/' + s.id);
+  pickNumbers(src, (withBests) => {
+    const s = createSession(src.clientId, nextDate(src.clientId), src.time);
+    s.items = copyItems(src, withBests);
+    s.focus = src.focus;
+    s.duration = src.duration;
+    s.started = true;
+    s.copiedFrom = fmtShort(src.date) + (src.focus ? ' · ' + src.focus : '') + (withBests ? ' · personal bests' : '');
+    save();
+    app.go('#/session/' + s.id);
+  });
 });
