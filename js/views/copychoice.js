@@ -1,29 +1,41 @@
-// Copying a session: start from last time's numbers, or each exercise's personal best (for when
-// the client took it easy that day). Only asks when the two differ.
+// Starting from a session or a template: which numbers to use. A copied session offers its own
+// numbers ("last time") or each exercise's personal best (for when the client took it easy that
+// day); a template offers its own numbers, last time's, or the personal bests. Only asks when
+// they differ.
 
 import { esc, icon, on, app, fmtShort } from '../util.js';
-import { bestsDiffer } from '../store.js';
+import { numberChoices } from '../store.js';
 
 let pending = null;
 
-// Calls done(withBests) straight away when nothing differs, otherwise after the trainer picks.
-export function pickNumbers(src, done) {
-  const diff = bestsDiffer(src);
-  if (!diff.length) return done(false);
+// Calls done(numbers) with 'as-is', 'last' or 'best': straight away when nothing differs,
+// otherwise once the trainer picks.
+export function pickNumbers(from, done, { template = false } = {}) {
+  const diff = numberChoices(from, template);
+  if (!diff.length) return done('as-is');
   pending = done;
-  const n = src.items.filter((it) => it.exId).length;
+  const n = from.items.filter((it) => it.exId).length;
+  const cols = template
+    ? [['own', 'Template', 'as-is'], ['last', 'Last time', 'last'], ['best', 'Best', 'best']]
+    : [['own', 'Last time', 'as-is'], ['best', 'Best', 'best']];
+  const intro = template
+    ? `${diff.length} of ${n} exercise${n === 1 ? '' : 's'} in ${esc(from.name)} differ from last time or the personal best.`
+    : `${diff.length} of ${n} exercise${n === 1 ? '' : 's'} on ${esc(fmtShort(from.date))} differ from the personal best.`;
+  const row = (d) =>
+    `<div class="num-row" role="row"><span class="num-name" role="rowheader">${esc(d.name)}</span>${cols
+      .map(([k], i) => (i === cols.length - 1 ? `<strong role="cell">${esc(d[k])}</strong>` : `<span role="cell">${esc(d[k])}</span>`))
+      .join('')}</div>`;
   app.modal(
     `<div class="modal-head"><h2>Which numbers?</h2><button type="button" class="btn-icon" data-act="closeModal" aria-label="Close">${icon.x(18)}</button></div>
-     <p class="muted small">${diff.length} of ${n} exercise${n === 1 ? '' : 's'} on ${esc(fmtShort(src.date))} differ from the personal best.</p>
-     <div class="num-diff" role="table" aria-label="Last time and personal best">
-       <div class="num-row num-head" role="row"><span role="columnheader">Exercise</span><span role="columnheader">Last time</span><span role="columnheader">Best</span></div>
-       ${diff
-         .map((d) => `<div class="num-row" role="row"><span role="cell">${esc(d.name)}</span><span role="cell">${esc(d.last)}</span><strong role="cell">${esc(d.best)}</strong></div>`)
-         .join('')}
+     <p class="muted small">${intro}</p>
+     <div class="num-diff cols-${cols.length}" role="table" aria-label="Numbers to start from">
+       <div class="num-row num-head" role="row">${cols.map(([, label]) => `<span role="columnheader">${label}</span>`).join('')}</div>
+       ${diff.map(row).join('')}
      </div>
-     <div class="note-actions">
-       <button type="button" class="btn btn-outline" data-act="copyNumbers" data-v="last">Last time</button>
-       <button type="button" class="btn btn-dark" data-act="copyNumbers" data-v="best">${icon.trophy(16)}Personal bests</button>
+     <div class="num-actions cols-${cols.length}">
+       ${cols
+         .map(([, label, v], i) => `<button type="button" class="btn ${i === cols.length - 1 ? 'btn-dark' : 'btn-outline'}" data-act="copyNumbers" data-v="${v}">${v === 'best' ? icon.trophy(16) + 'Personal bests' : label}</button>`)
+         .join('')}
      </div>`,
     'Which numbers?'
   );
@@ -33,5 +45,5 @@ on('click', 'copyNumbers', (el) => {
   const done = pending;
   pending = null;
   app.closeModal();
-  if (done) done(el.dataset.v === 'best');
+  if (done) done(el.dataset.v);
 });

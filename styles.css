@@ -526,6 +526,32 @@ button.choice:hover { border-color: var(--ink); }
 .choice-text { font-size: 14px; font-weight: 600; color: var(--muted); line-height: 1.5; }
 .choice-go { margin-top: auto; font-size: 14px; font-weight: 800; display: flex; align-items: center; gap: 6px; }
 .choice-dark .btn { margin-top: auto; }
+.choice .btn.wide { margin-top: auto; }
+
+/* "From a template": full width, one button per template */
+.choice-wide { grid-column: 1 / -1; min-height: 0; }
+.tpl-picks { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 10px; }
+.tpl-pick {
+  display: flex; flex-direction: column; gap: 3px; text-align: left; padding: 14px 16px; border-radius: 14px;
+  background: rgba(255, 255, 255, 0.08); border: 1.5px solid transparent; color: #fff;
+}
+.tpl-pick strong { font-size: 16px; font-weight: 800; }
+.tpl-pick span { font-size: 13px; font-weight: 600; color: var(--side-text); }
+.tpl-pick:hover, .tpl-pick:focus-visible { border-color: var(--accent); }
+.choice-slim { flex-direction: row; align-items: center; flex-wrap: wrap; padding: 16px 18px; }
+.choice-slim .choice-icon { width: 40px; height: 40px; border-radius: 12px; }
+.choice-slim .choice-text { flex: 1 1 220px; }
+.choice-slim .choice-text strong { color: var(--ink); }
+
+/* client page: templates */
+.tpl-list { list-style: none; margin: 0; padding: 0; }
+.tpl-row { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-top: 1px solid var(--line-2); }
+.tpl-row:first-child { border-top: 0; }
+.tpl-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.tpl-main strong { font-size: 15px; font-weight: 800; }
+.tpl-main span { font-size: 13px; font-weight: 600; color: var(--muted); }
+.tpl-main:hover strong { text-decoration: underline; }
+.tpl-name { padding: 16px 18px; }
 
 .exercises { container-type: inline-size; padding: 14px 18px 18px; }
 .exercises .card-head { flex-wrap: wrap; }
@@ -666,7 +692,7 @@ body.is-dragging { user-select: none; -webkit-user-select: none; cursor: grabbin
   .item-ex .mini-label { display: none; }
 }
 
-.danger-zone { display: flex; justify-content: center; padding: 4px 0 2px; }
+.danger-zone { display: flex; justify-content: center; flex-wrap: wrap; gap: 8px; padding: 4px 0 2px; }
 .action-bar {
   position: sticky; bottom: calc(16px + var(--tabbar-h) + env(safe-area-inset-bottom)); z-index: 5;
   display: flex; align-items: center; gap: 10px;
@@ -911,11 +937,14 @@ body.is-offline .action-bar { bottom: calc(60px + var(--tabbar-h) + env(safe-are
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }
 
-/* copying a session: last time vs personal best, per exercise that differs */
+/* starting from a session or template: which numbers, per exercise that differs */
 .num-diff { margin: 12px 0 16px; max-height: 50vh; overflow-y: auto; }
-.num-row { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr) minmax(0, 1fr); gap: 10px; padding: 9px 0; border-top: 1px solid var(--line-2); font-size: 14px; align-items: baseline; }
+.num-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 12px; row-gap: 2px; padding: 9px 0; border-top: 1px solid var(--line-2); font-size: 14px; }
+.cols-3 .num-row { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .num-row > * { min-width: 0; overflow-wrap: anywhere; }
-.num-row > span:first-child { font-weight: 700; }
-.num-row > span:nth-child(2) { color: var(--muted); }
+.num-row > span:not(.num-name) { color: var(--muted); }
+.num-name { grid-column: 1 / -1; font-weight: 700; }
 .num-head { border-top: 0; padding-top: 0; font-size: 11px; font-weight: 800; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; }
-.num-head > span:first-child { font-weight: 800; }
+.num-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.num-actions.cols-3 { grid-template-columns: 1fr 1fr; }
+.num-actions.cols-3 .btn-dark { grid-column: 1 / -1; }

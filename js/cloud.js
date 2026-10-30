@@ -12,7 +12,7 @@
 const V = '13.0.0';
 const BASE = `https://www.gstatic.com/firebasejs/${V}`;
 
-export const COLLECTIONS = ['clients', 'sessions', 'exercises', 'meta'];
+export const COLLECTIONS = ['clients', 'sessions', 'templates', 'exercises', 'meta'];
 
 const firebaseConfig = {
   apiKey: 'AIzaSyDBMpMxpWkLMLR2pTmB4_5pnpxkjwi_UIw',
@@ -87,7 +87,7 @@ export async function markAccount(uid) {
   await fb.F.setDoc(fb.F.doc(fb.fs, 'users', uid), { createdAt: new Date().toISOString(), version: 2 }, { merge: true });
 }
 
-// Live updates for all three collections. cb(name, changes, isFirst) where
+// Live updates for every collection. cb(name, changes, isFirst) where
 // changes = [{ type: 'set' | 'removed', id, data }].
 export function subscribe(uid, cb, onError) {
   const unsubs = COLLECTIONS.map((name) => {

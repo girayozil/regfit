@@ -2,7 +2,7 @@
 // muscle, and the editor (side panel on wide screens, its own page on narrow ones).
 
 import { esc, icon, on, app, uid, isWide, select, opt } from '../util.js';
-import { db, exById, usageCount, save, REGION_NAME, REGIONS, TRACKING, equipmentList, equipmentUsage, addEquipment, renameEquipment, removeEquipment, INTENSITY, muscleCatalog, canonicalMuscle } from '../store.js';
+import { db, exById, usageCount, templateUsage, save, REGION_NAME, REGIONS, TRACKING, equipmentList, equipmentUsage, addEquipment, renameEquipment, removeEquipment, INTENSITY, muscleCatalog, canonicalMuscle } from '../store.js';
 
 const ui = { region: 'All', muscle: null, q: '', draft: null }; // draft: unsaved new exercise
 
@@ -76,6 +76,8 @@ function editor(e, standalone) {
   }
   const isDraft = e.id === 'new';
   const used = isDraft ? 0 : usageCount(e.id);
+  const inTemplates = isDraft ? 0 : templateUsage(e.id);
+  const usedText = [used && used + ' session' + (used === 1 ? '' : 's'), inTemplates && inTemplates + ' template' + (inTemplates === 1 ? '' : 's')].filter(Boolean).join(' and ');
   const regionSeg = REGIONS
     .map((r) => `<label class="seg-radio"><input type="radio" name="ex-region" value="${r}" data-change="exRegion" data-id="${e.id}"${e.region === r ? ' checked' : ''}><span>${REGION_SHORT[r]}</span></label>`)
     .join('');
@@ -90,14 +92,14 @@ function editor(e, standalone) {
     : `<div class="card-head">
         <h2 class="eyebrow">Edit exercise</h2>
         <button type="button" class="btn-icon sm" data-act="dupEx" data-id="${e.id}" aria-label="Duplicate exercise" title="Duplicate">${icon.copy(18)}</button>
-        <button type="button" class="btn-icon sm danger" data-act="delEx" data-id="${e.id}" aria-label="Delete exercise" title="${used ? 'Used in sessions — can’t delete' : 'Delete'}"${used ? ' disabled' : ''}>${icon.trash(18)}</button>
+        <button type="button" class="btn-icon sm danger" data-act="delEx" data-id="${e.id}" aria-label="Delete exercise" title="${usedText ? 'Used in ' + usedText + ' — can’t delete' : 'Delete'}"${usedText ? ' disabled' : ''}>${icon.trash(18)}</button>
       </div>`;
   const foot = isDraft
     ? `<div class="editor-actions">
         <button type="button" class="btn btn-outline" data-act="cancelDraft">Cancel</button>
         <button type="button" class="btn btn-dark" data-act="addDraft">${icon.check(16)}Add exercise</button>
       </div>`
-    : `<p class="muted small">${used ? 'Used in ' + used + ' session' + (used === 1 ? '' : 's') + ' · ' : ''}Changes save automatically.</p>`;
+    : `<p class="muted small">${usedText ? 'Used in ' + usedText + ' · ' : ''}Changes save automatically.</p>`;
   return `<aside class="card editor${standalone ? ' editor-page' : ''}" aria-label="${isDraft ? 'New exercise' : 'Edit exercise'}">
     ${head}
     <label class="field-label">Name<input class="field" value="${esc(e.name)}" placeholder="e.g. Cable Lateral Raise" data-input="exName" data-change="exNameDone" data-id="${e.id}" autocapitalize="words"></label>
@@ -389,7 +391,7 @@ on('click', 'addDraft', () => {
 
 on('click', 'delEx', (el) => {
   const e = exOf(el);
-  if (usageCount(e.id)) return;
+  if (usageCount(e.id) || templateUsage(e.id)) return;
   if (!confirm(`Delete “${e.name}” from the library?`)) return;
   db.exercises = db.exercises.filter((x) => x.id !== e.id);
   save();

@@ -1,11 +1,14 @@
-// Session editor: when/what, start from scratch or copy a previous session,
-// exercise rows with dropdowns, and logging the session as done.
+// Session editor: when/what, start from a template, a previous session or scratch,
+// exercise rows with dropdowns, and logging the session as done. The exercise list (rows,
+// picker, sets, notes, supersets, drag) also edits templates, so it works on a "plan": a
+// session or a template.
 
 import { esc, icon, on, app, uid, fullName, initials, tint, relDay, fmtShort, todayISO, isTimed, repsLabel, parseNum, select, opt, minToTime } from '../util.js';
-import { db, sessionById, clientById, sessionsFor, sessionNumber, exById, exName, lastFor, bestFor, personalBests, copyItems, deleteSession, save, PB_CATEGORIES, isTimeTracked, isLoadTracked, amountField, normalizeGroups, blocksOf, groupLabels, isUniform, itemParts, shortSummary, totalSets, newSets, trackingOf } from '../store.js';
+import { db, sessionById, planById, clientById, sessionsFor, sessionNumber, exById, exName, lastFor, bestFor, personalBests, copyItems, deleteSession, save, templatesFor, PB_CATEGORIES, isTimeTracked, isLoadTracked, amountField, normalizeGroups, blocksOf, groupLabels, isUniform, itemParts, shortSummary, totalSets, newSets, trackingOf } from '../store.js';
 import { sessionStatus } from './today.js';
 import { openPicker } from './expicker.js';
 import { pickNumbers } from './copychoice.js';
+import { templateMeta } from './template.js';
 
 const TIMES = Array.from({ length: (22 - 5) * 4 + 1 }, (_, i) => minToTime(5 * 60 + i * 15));
 const DURATIONS = [30, 45, 60, 75, 90, 120];
@@ -25,7 +28,7 @@ function repsOptions(selected, timedFirst) {
   return timedFirst ? timed + nums : nums + timed;
 }
 
-const summaryText = (s) => {
+export const summaryText = (s) => {
   const n = s.items.length;
   const sets = totalSets(s.items);
   return `${n} exercise${n === 1 ? '' : 's'} · ${sets} set${sets === 1 ? '' : 's'}`;
@@ -141,6 +144,21 @@ function itemsHtml(s) {
     .join('');
 }
 
+// The exercise list card for a session or a template; `head` goes next to the title.
+export function exercisesCard(plan, head = '') {
+  return `<section class="card exercises" aria-label="Exercises">
+    <div class="card-head">
+      <h2>Exercises</h2>
+      ${head}
+    </div>
+    <div class="item-head" aria-hidden="true"><span></span><span>Exercise</span><span>Sets</span><span>Reps</span><span>Weight</span><span>Last · Best</span><span></span></div>
+    <div class="item-list" data-plan="${plan.id}">
+      ${plan.items.length ? itemsHtml(plan) : `<div class="empty-inline">No exercises yet. Add the first one below.</div>`}
+    </div>
+    <button type="button" class="add-row" data-act="addItem" data-id="${plan.id}">${icon.plus(18)}Add exercise</button>
+  </section>`;
+}
+
 export function render(id) {
   const s = sessionById(id);
   if (!s) return `<div class="empty-state"><h1 class="page-title">Session not found</h1><a class="btn btn-dark" href="#/today">Back to Today</a></div>`;
@@ -166,40 +184,50 @@ export function render(id) {
     </button>
   </section>`;
 
+  const templates = templatesFor(s.clientId);
+  const copyCard = (dark) => `<div class="choice${dark ? ' choice-dark' : ''}">
+      <span class="choice-icon${dark ? ' accent' : ''}">${icon.copy(22)}</span>
+      <span class="choice-title">Copy previous session</span>
+      ${
+        others.length
+          ? `<label class="field-label${dark ? ' on-dark' : ''}">Session to copy${select(`data-change="copySrc" data-id="${s.id}"`, others.map((o) => opt(o.id, fmtShort(o.date) + ' · ' + (o.focus || 'Session') + ' (' + o.items.length + ')' + (o.status === 'planned' ? ' · planned' : ''), copySrc)).join(''))}</label>
+             <button type="button" class="btn ${dark ? 'btn-accent' : 'btn-dark'} wide" data-act="startCopy" data-id="${s.id}">Copy exercises &amp; weights</button>`
+          : `<span class="choice-text">${esc(c.first)} has no previous sessions yet. Start from scratch for the first one.</span>`
+      }
+    </div>`;
+  // Templates come first: one tap per template. Until there are any, copying stays the main option.
+  const templateCard = templates.length
+    ? `<div class="choice choice-dark choice-wide">
+        <span class="choice-icon accent">${icon.template(22)}</span>
+        <span class="choice-title">From a template</span>
+        <div class="tpl-picks">${templates
+          .map((t) => `<button type="button" class="tpl-pick" data-act="startTemplate" data-id="${t.id}" data-session="${s.id}"><strong>${esc(t.name)}</strong><span>${esc(templateMeta(t))}</span></button>`)
+          .join('')}</div>
+      </div>`
+    : `<div class="choice choice-wide choice-slim">
+        <span class="choice-icon">${icon.template(22)}</span>
+        <span class="choice-text"><strong>From a template</strong> · ${esc(c.first)} has no templates yet. Save a workout as one, or make one now.</span>
+        <button type="button" class="btn btn-sm btn-outline" data-act="newTemplate" data-client="${c.id}">${icon.plus(14)}New template</button>
+      </div>`;
   const choice = `<section class="choose" aria-label="How do you want to start?">
     <h2 class="section-title">How do you want to start?</h2>
     <div class="choice-grid">
+      ${templateCard}
+      ${copyCard(!templates.length)}
       <button type="button" class="choice" data-act="startScratch" data-id="${s.id}">
         <span class="choice-icon">${icon.blank(22)}</span>
         <span class="choice-title">Start from scratch</span>
         <span class="choice-text">An empty session. Add exercises one at a time from the library.</span>
         <span class="choice-go">Start empty ${icon.arrow(16)}</span>
       </button>
-      <div class="choice choice-dark">
-        <span class="choice-icon accent">${icon.copy(22)}</span>
-        <span class="choice-title">Copy previous session</span>
-        ${
-          others.length
-            ? `<label class="field-label on-dark">Session to copy${select(`data-change="copySrc" data-id="${s.id}"`, others.map((o) => opt(o.id, fmtShort(o.date) + ' · ' + (o.focus || 'Session') + ' (' + o.items.length + ')' + (o.status === 'planned' ? ' · planned' : ''), copySrc)).join(''))}</label>
-               <button type="button" class="btn btn-accent wide" data-act="startCopy" data-id="${s.id}">Copy exercises &amp; weights</button>`
-            : `<span class="choice-text">${esc(c.first)} has no previous sessions yet. Start from scratch for the first one.</span>`
-        }
-      </div>
     </div>
   </section>`;
 
-  const builder = `<section class="card exercises" aria-label="Exercises">
-    <div class="card-head">
-      <h2>Exercises</h2>
-      ${!isDone ? `<span class="pill pill-soft">${s.copiedFrom ? 'Copied from ' + esc(s.copiedFrom) : 'Started from scratch'}</span>` : ''}
-      ${!isDone ? `<button type="button" class="btn btn-sm btn-ghost" data-act="changeStart" data-id="${s.id}">Start over</button>` : ''}
-    </div>
-    <div class="item-head" aria-hidden="true"><span></span><span>Exercise</span><span>Sets</span><span>Reps</span><span>Weight</span><span>Last · Best</span><span></span></div>
-    <div class="item-list" data-session="${s.id}">
-      ${s.items.length ? itemsHtml(s) : `<div class="empty-inline">No exercises yet. Add the first one below.</div>`}
-    </div>
-    <button type="button" class="add-row" data-act="addItem" data-id="${s.id}">${icon.plus(18)}Add exercise</button>
-  </section>`;
+  const origin = s.templateId ? 'Template · ' + s.copiedFrom : s.copiedFrom ? 'Copied from ' + s.copiedFrom : 'Started from scratch';
+  const builder = exercisesCard(
+    s,
+    isDone ? '' : `<span class="pill pill-soft">${esc(origin)}</span><button type="button" class="btn btn-sm btn-ghost" data-act="changeStart" data-id="${s.id}">Start over</button>`
+  );
 
   const footer = choosing
     ? ''
@@ -227,15 +255,20 @@ export function render(id) {
   </header>
   ${when}
   ${choosing ? choice : builder}
-  <div class="danger-zone"><button type="button" class="btn btn-ghost danger" data-act="deleteSession" data-id="${s.id}">${icon.trash(16)}Delete session</button></div>
+  <div class="danger-zone">
+    ${s.items.some((it) => it.exId) ? `<button type="button" class="btn btn-ghost" data-act="saveAsTemplate" data-id="${s.id}">${icon.template(16)}Save as template</button>` : ''}
+    <button type="button" class="btn btn-ghost danger" data-act="deleteSession" data-id="${s.id}">${icon.trash(16)}Delete session</button>
+  </div>
   ${footer}`;
 }
 
 // ---------- handlers ----------
 
-const sessionOf = (el) => sessionById(el.dataset.id || el.closest('[data-session]').dataset.session);
+// The session or template a control belongs to: its own data-id, else the list it sits in.
+const planOf = (el) => planById(el.dataset.id || el.closest('[data-plan]').dataset.plan);
+const sessionOf = (el) => sessionById(el.dataset.id);
 const itemOf = (el) => {
-  const s = sessionOf(el);
+  const s = planOf(el);
   return { s, it: s.items.find((x) => x.id === el.dataset.item) };
 };
 
@@ -272,13 +305,14 @@ on('click', 'startCopy', (el) => {
   const sel = document.querySelector('[data-change="copySrc"]');
   const src = sessionById(sel ? sel.value : ui.copySrc[s.id]);
   if (!src) return;
-  pickNumbers(src, (withBests) => {
-    s.items = copyItems(src, withBests);
+  pickNumbers(src, (numbers) => {
+    s.items = copyItems(src, numbers);
     s.started = true;
-    s.copiedFrom = fmtShort(src.date) + (src.focus ? ' · ' + src.focus : '') + (withBests ? ' · personal bests' : '');
+    s.templateId = null;
+    s.copiedFrom = fmtShort(src.date) + (src.focus ? ' · ' + src.focus : '') + (numbers === 'best' ? ' · personal bests' : '');
     if (!s.focus) s.focus = src.focus;
     save();
-    app.toast(`Copied ${src.items.length} exercises` + (withBests ? ' at personal bests' : ''));
+    app.toast(`Copied ${src.items.length} exercises` + (numbers === 'best' ? ' at personal bests' : ''));
     app.rerender();
   });
 });
@@ -289,13 +323,14 @@ on('click', 'changeStart', (el) => {
   s.items = [];
   s.started = false;
   s.copiedFrom = null;
+  s.templateId = null;
   save();
   app.rerender();
 });
 
 // Add a row and go straight to choosing its exercise.
 on('click', 'addItem', (el) => {
-  const s = sessionOf(el);
+  const s = planOf(el);
   const it = { id: uid('it'), exId: '', sets: newSets() };
   s.items.push(it);
   save();
@@ -581,7 +616,7 @@ const endDrag = () => {
   document.body.classList.remove('is-dragging');
   const order = rowIds(root);
   if (order.join() === before) return;
-  const s = sessionById(root.dataset.session);
+  const s = planById(root.dataset.plan);
   s.items.sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id));
   save();
   app.rerender();
@@ -596,7 +631,7 @@ document.addEventListener('keydown', (e) => {
   if (!handle || (e.key !== 'ArrowUp' && e.key !== 'ArrowDown')) return;
   e.preventDefault();
   const dir = e.key === 'ArrowUp' ? -1 : 1;
-  const s = sessionById(handle.closest('[data-session]').dataset.session);
+  const s = planById(handle.closest('[data-plan]').dataset.plan);
   const blocks = blocksOf(s.items);
   const g = handle.dataset.group;
   const it = g ? null : s.items.find((x) => x.id === handle.dataset.item);
@@ -619,7 +654,7 @@ document.addEventListener('keydown', (e) => {
 
 // Link two neighbouring exercises into a superset (joining any superset either is in), or split.
 on('click', 'toggleLink', (el) => {
-  const s = sessionById(el.closest('[data-session]').dataset.session);
+  const s = planById(el.closest('[data-plan]').dataset.plan);
   const a = s.items.find((x) => x.id === el.dataset.a);
   const b = s.items.find((x) => x.id === el.dataset.b);
   if (a.group && a.group === b.group) {

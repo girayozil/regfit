@@ -1,10 +1,11 @@
 // Client profile: details, upcoming sessions, personal bests, past workouts.
 
-import { esc, icon, on, app, fullName, initials, tint, relDay, fmtShort, monShort, dayNum, fmtMonthYear, todayISO, addDays, fmtKg } from '../util.js';
-import { clientById, sessionsFor, doneFor, nextSession, personalBests, PB_CATEGORIES, groupLabels, exName, itemSummary, totalSets, createSession, copyItems, sessionById, save, sessionEnded } from '../store.js';
+import { esc, icon, on, app, fullName, initials, tint, relDay, fmtShort, monShort, dayNum, fmtMonthYear, todayISO, fmtKg } from '../util.js';
+import { clientById, sessionsFor, doneFor, nextSession, personalBests, PB_CATEGORIES, groupLabels, exName, itemSummary, totalSets, createSession, copyItems, sessionById, save, sessionEnded, templatesFor, nextSessionDate } from '../store.js';
 
 import './export.js';
 import { pickNumbers } from './copychoice.js';
+import { templateMeta } from './template.js';
 import { cardHtml as progressCard } from './chart.js';
 
 const ui = { open: {}, pbCat: 'heaviest' }; // open: expanded past session per client; pbCat: personal-best category shown
@@ -84,6 +85,7 @@ export function render(id) {
                       .join(''))(groupLabels(s.items))}
                     <div class="hist-actions">
                       <a class="btn btn-sm btn-outline" href="#/session/${s.id}">Open</a>
+                      <button type="button" class="btn btn-sm btn-outline" data-act="saveAsTemplate" data-id="${s.id}">${icon.template(14)}Save as template</button>
                       <button type="button" class="btn btn-sm btn-dark" data-act="useTemplate" data-id="${s.id}">${icon.copy(14)}Use for next session</button>
                     </div>
                   </div>`
@@ -93,6 +95,23 @@ export function render(id) {
         })
         .join('')
     : `<p class="muted pad-y">No completed sessions yet.</p>`;
+
+  const templates = templatesFor(id);
+  const templatesCard = `<section class="card" aria-label="Templates">
+    <div class="card-head"><h2>${icon.template(18)}Templates</h2><button type="button" class="btn btn-sm btn-outline" data-act="newTemplate" data-client="${c.id}">${icon.plus(14)}New</button></div>
+    ${
+      templates.length
+        ? `<ul class="tpl-list">${templates
+            .map(
+              (t) => `<li class="tpl-row">
+                <a class="tpl-main" href="#/template/${t.id}"><strong>${esc(t.name)}</strong><span>${esc(templateMeta(t))}</span></a>
+                <button type="button" class="btn btn-sm btn-dark" data-act="startTemplate" data-id="${t.id}" aria-label="Start a session from ${esc(t.name)}">${icon.arrow(14)}Start</button>
+              </li>`
+            )
+            .join('')}</ul>`
+        : `<p class="muted pad-y">Save a past workout as a template, or make a new one, to start sessions in one tap.</p>`
+    }
+  </section>`;
 
   return `
   <a class="back" href="#/clients">${icon.left(16)}Clients</a>
@@ -123,6 +142,7 @@ export function render(id) {
     ${c.notes ? `<p class="notes">${esc(c.notes)}</p>` : ''}
   </section>
   ${upcoming}
+  ${templatesCard}
   ${progressCard(c.id)}
   <div class="profile-grid">
     <section class="card" aria-label="Personal bests">
@@ -147,30 +167,22 @@ on('click', 'toggleHist', (el) => {
   app.rerender();
 });
 
-// Next date for a new session: the day after the client's latest session, never in the past.
-function nextDate(clientId) {
-  const t = todayISO();
-  const latest = sessionsFor(clientId).slice(-1)[0];
-  if (!latest || latest.date < t) return t;
-  return addDays(latest.date, latest.date === t ? 1 : 2);
-}
-
 on('click', 'scheduleNext', (el) => {
   const id = el.dataset.id;
   const latest = sessionsFor(id).slice(-1)[0];
-  const s = createSession(id, nextDate(id), latest ? latest.time : '09:00');
+  const s = createSession(id, nextSessionDate(id), latest ? latest.time : '09:00');
   app.go('#/session/' + s.id);
 });
 
 on('click', 'useTemplate', (el) => {
   const src = sessionById(el.dataset.id);
-  pickNumbers(src, (withBests) => {
-    const s = createSession(src.clientId, nextDate(src.clientId), src.time);
-    s.items = copyItems(src, withBests);
+  pickNumbers(src, (numbers) => {
+    const s = createSession(src.clientId, nextSessionDate(src.clientId), src.time);
+    s.items = copyItems(src, numbers);
     s.focus = src.focus;
     s.duration = src.duration;
     s.started = true;
-    s.copiedFrom = fmtShort(src.date) + (src.focus ? ' · ' + src.focus : '') + (withBests ? ' · personal bests' : '');
+    s.copiedFrom = fmtShort(src.date) + (src.focus ? ' · ' + src.focus : '') + (numbers === 'best' ? ' · personal bests' : '');
     save();
     app.go('#/session/' + s.id);
   });

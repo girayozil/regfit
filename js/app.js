@@ -9,6 +9,7 @@ import * as client from './views/client.js';
 import * as session from './views/session.js';
 import * as library from './views/library.js';
 import * as settings from './views/settings.js';
+import * as template from './views/template.js';
 
 const routes = [
   [/^\/?(today)?$/, 'today', () => today.render()],
@@ -17,6 +18,7 @@ const routes = [
   [/^\/client\/([^/]+)\/edit$/, 'clients', (m) => clients.renderForm(m[1])],
   [/^\/client\/([^/]+)$/, 'clients', (m) => client.render(m[1])],
   [/^\/session\/([^/]+)$/, 'today', (m) => session.render(m[1])],
+  [/^\/template\/([^/]+)$/, 'clients', (m) => template.render(m[1])],
   [/^\/library(?:\/([^/]+))?$/, 'library', (m) => library.render(m[1] || null)],
   [/^\/settings$/, 'settings', () => settings.render()],
 ];

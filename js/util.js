@@ -102,6 +102,7 @@ export const icon = {
   x: (s) => svg('<path d="M6 6l12 12M18 6L6 18"/>', s, 2),
   check: (s) => svg('<path d="M5 12l5 5L20 7"/>', s, 2.2),
   trophy: (s) => svg('<path d="M8 4h8v5a4 4 0 0 1-8 0V4zM8 6H5a3 3 0 0 0 3 4M16 6h3a3 3 0 0 1-3 4M12 13v4M8 20h8"/>', s),
+  template: (s) => svg('<rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 3h6v3H9zM9 11h6M9 15h6"/>', s),
   blank: (s) => svg('<path d="M14 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8z"/><path d="M14 3v5h5M12 11v6M9 14h6"/>', s),
   arrow: (s) => svg('<path d="M5 12h14M13 6l6 6-6 6"/>', s, 2.2),
   trash: (s) => svg('<path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/>', s),

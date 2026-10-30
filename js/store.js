@@ -251,7 +251,7 @@ export function demoData() {
     ['tom', 'Tom', 'Becker', 52, 'Male', 178, 84, 0.8, [0, 5], ['11:00', '11:00'], 'split', 300, 150, ''],
     ['lucas', 'Lucas', 'Martin', 38, 'Male', 180, 79, 0.9, [1, 4], ['17:00', '17:00'], 'split', 140, -1, 'Paused training in August — follow up.'],
   ];
-  const out = { version: 2, exercises: libraryExercises(), clients: [], sessions: [], meta: [] };
+  const out = { version: 2, exercises: libraryExercises(), clients: [], sessions: [], templates: [], meta: [] };
 
   clients.forEach(([key, first, last, age, sex, height, weight, factor, days, times, plan, history, holiday, notes], ci) => {
     const id = 'c-' + key;
@@ -291,6 +291,7 @@ export function demoData() {
     const focuses = plan === 'full' ? ['Full body'] : ['Upper body', 'Lower body'];
     const variant = {};
     const lastDoneOn = {};
+    const lastItems = {}; // per workout (focus + variant): its latest exercises, for the templates
     let turn = ci % 2;
     // Finishers: Sarah (half-marathon) runs on the treadmill after lower-body days, building
     // from 20 to 30 minutes and slowly faster; Tom does farmer's walks, getting heavier, then
@@ -327,6 +328,7 @@ export function demoData() {
         session.items = applySupersets(list.map((ex) => perform(ex, light, bad)));
         if (wantsFinisher(focus)) session.items.push(...finisher(false));
         lastDoneOn[focus + v] = date;
+        lastItems[focus + ' ' + 'AB'[v]] = session.items;
       } else if (off <= 2) {
         // Planned in the next few days: already built from the matching previous workout.
         session.items = applySupersets(list.map(preview));
@@ -336,12 +338,16 @@ export function demoData() {
       }
       out.sessions.push(session);
     }
+    // One template per workout they rotate through, e.g. "Upper body A" and "Upper body B".
+    Object.keys(lastItems)
+      .sort()
+      .forEach((name) => out.templates.push({ id: uid('t'), clientId: id, name, items: copyItems({ clientId: id, items: lastItems[name] }), createdAt: start }));
   });
   return out;
 }
 
 export function emptyData() {
-  return { version: 2, exercises: libraryExercises(), clients: [], sessions: [], meta: [] };
+  return { version: 2, exercises: libraryExercises(), clients: [], sessions: [], templates: [], meta: [] };
 }
 
 // ---------- persistence & sync ----------
@@ -351,7 +357,7 @@ export function emptyData() {
 // Changes made on another device arrive through applyRemote().
 
 // meta: small account-wide records, e.g. { id: 'equipment', items: [...] }.
-const SYNCED = ['clients', 'sessions', 'exercises', 'meta'];
+const SYNCED = ['clients', 'sessions', 'templates', 'exercises', 'meta'];
 const emptySynced = () => Object.fromEntries(SYNCED.map((n) => [n, new Map()]));
 export let db = emptyData();
 let cacheKey = KEY;
@@ -522,6 +528,7 @@ function migrate(d) {
         if (retimed.has(it.exId)) it.sets = it.sets.map((x) => (x.secs !== undefined && x.reps === undefined ? { reps: (+x.secs || 60) + 's', weight: x.level ?? '' } : x));
       })
     );
+  if (!Array.isArray(d.templates)) d.templates = [];
   if (!Array.isArray(d.meta)) d.meta = [];
   d.version = 2;
 }
@@ -557,6 +564,7 @@ export function lastDone(clientId) {
 export const sessionNumber = (s) => sessionsFor(s.clientId).findIndex((x) => x.id === s.id) + 1;
 
 export const usageCount = (exId) => db.sessions.filter((s) => s.items.some((it) => it.exId === exId)).length;
+export const templateUsage = (exId) => db.templates.filter((t) => t.items.some((it) => it.exId === exId)).length;
 
 // ---------- muscle groups ----------
 // Built-in muscles per region, plus any custom muscle an exercise uses. A custom muscle belongs
@@ -830,15 +838,85 @@ export function bestSetsFor(clientId, exId) {
   return pick ? pick.sets.map((x) => ({ ...x })) : null;
 }
 
-// Exercises in `session` whose sets differ from the personal-best sets: [{ name, last, best }].
-export function bestsDiffer(session) {
+// The sets from the client's latest logged session with this exercise.
+export function lastSetsFor(clientId, exId) {
+  const done = doneFor(clientId);
+  for (let i = done.length - 1; i >= 0; i--) {
+    const it = done[i].items.find((x) => x.exId === exId);
+    if (it) return it.sets.map((x) => ({ ...x }));
+  }
+  return null;
+}
+
+// Where copied numbers could come from, per exercise, when they differ. For a session: its own
+// sets vs the personal best. For a template: its sets vs last time vs the personal best.
+// Returns [{ name, own, last?, best }] for the exercises whose options aren't all the same.
+export function numberChoices(from, isTemplate) {
   const same = (a, b) => a.length === b.length && a.every((x, i) => String(x.reps) === String(b[i].reps) && String(x.weight) === String(b[i].weight));
+  const text = (it, sets) => (sets ? shortSummary({ ...it, sets }) : '—');
   const out = [];
-  session.items.forEach((it) => {
-    const best = it.exId && bestSetsFor(session.clientId, it.exId);
-    if (best && !same(it.sets, best)) out.push({ name: exName(it.exId), last: shortSummary(it), best: shortSummary({ ...it, sets: best }) });
+  from.items.forEach((it) => {
+    if (!it.exId) return;
+    const best = bestSetsFor(from.clientId, it.exId);
+    if (!best) return; // never done: nothing to choose
+    const last = isTemplate ? lastSetsFor(from.clientId, it.exId) : null;
+    const differs = !same(it.sets, best) || (last && !same(it.sets, last));
+    if (differs) out.push({ name: exName(it.exId), own: shortSummary(it), ...(isTemplate ? { last: text(it, last) } : {}), best: text(it, best) });
   });
   return out;
+}
+
+// ---------- templates ----------
+// A client's reusable session plans ("Upper body A"): exercises, sets, supersets and notes.
+
+export const templateById = (id) => db.templates.find((t) => t.id === id);
+export const templatesFor = (clientId) => db.templates.filter((t) => t.clientId === clientId).sort((a, b) => a.name.localeCompare(b.name));
+// A session or a template: both hold a client's list of exercises.
+export const planById = (id) => sessionById(id) || templateById(id);
+
+export function createTemplate(clientId, name, items = []) {
+  const t = { id: uid('t'), clientId, name: name || 'Template', items, createdAt: todayISO() };
+  db.templates.push(t);
+  save();
+  return t;
+}
+
+export function deleteTemplate(id) {
+  db.templates = db.templates.filter((t) => t.id !== id);
+  save();
+}
+
+// Fill a session from a template, with the chosen numbers ('as-is', 'last' or 'best').
+export function startFromTemplate(s, t, numbers) {
+  s.items = copyItems(t, numbers);
+  s.started = true;
+  s.templateId = t.id;
+  s.copiedFrom = t.name + (numbers === 'last' ? ' · last time' : numbers === 'best' ? ' · personal bests' : '');
+  if (!s.focus) s.focus = t.name;
+  save();
+}
+
+// Next date for a new session: the day after the client's latest session, never in the past.
+export function nextSessionDate(clientId) {
+  const t = todayISO();
+  const latest = sessionsFor(clientId).slice(-1)[0];
+  if (!latest || latest.date < t) return t;
+  return addDays(latest.date, latest.date === t ? 1 : 2);
+}
+
+// The session to start a template into: the client's next planned session that's still empty,
+// else a new one on the next free day (same time as their latest).
+export function sessionToFill(clientId) {
+  const empty = sessionsFor(clientId).find((s) => s.status === 'planned' && !s.started && !s.items.length && s.date >= todayISO());
+  if (empty) return empty;
+  const latest = sessionsFor(clientId).slice(-1)[0];
+  return createSession(clientId, nextSessionDate(clientId), latest ? latest.time : '09:00');
+}
+
+// Date of the latest session started from this template, or null.
+export function templateLastUsed(id) {
+  const used = db.sessions.filter((s) => s.templateId === id).map((s) => s.date);
+  return used.length ? used.sort().pop() : null;
 }
 
 // Most recent logged item for this exercise, from a done session other than `session`.
@@ -863,6 +941,7 @@ export function createClient(fields) {
 export function deleteClient(id) {
   db.clients = db.clients.filter((c) => c.id !== id);
   db.sessions = db.sessions.filter((s) => s.clientId !== id);
+  db.templates = db.templates.filter((t) => t.clientId !== id);
   save();
 }
 
@@ -873,12 +952,13 @@ export function createSession(clientId, date, time) {
   return s;
 }
 
-// withBests: each exercise takes the sets from the client's personal-best session for it.
-export function copyItems(fromSession, withBests = false) {
+// numbers: 'as-is' keeps the copied sets; 'last' / 'best' take each exercise's sets from the
+// client's latest / personal-best session for it (an exercise they've never done keeps its own).
+export function copyItems(from, numbers = 'as-is') {
   const groups = {}; // supersets get fresh group ids in the copy
-  return fromSession.items.map((it) => {
-    const best = withBests && it.exId ? bestSetsFor(fromSession.clientId, it.exId) : null;
-    const copy = { ...it, id: uid('it'), sets: (best || it.sets).map((x) => ({ ...x })) };
+  return from.items.map((it) => {
+    const sets = (it.exId && numbers === 'last' && lastSetsFor(from.clientId, it.exId)) || (it.exId && numbers === 'best' && bestSetsFor(from.clientId, it.exId)) || it.sets;
+    const copy = { ...it, id: uid('it'), sets: sets.map((x) => ({ ...x })) };
     if (it.group) copy.group = groups[it.group] = groups[it.group] || uid('g');
     return copy;
   });
